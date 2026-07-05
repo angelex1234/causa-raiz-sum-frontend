@@ -408,13 +408,22 @@ function renderPhotos(photos) {
 
 function controlQualityPhoto(ref, label) {
   const raw = String(ref || "").trim();
-  const endpoint = raw ? `?action=foto_cc&nombre=${encodeURIComponent(raw)}` : "";
+  const name = fileNameFromPath(raw);
+  const endpoint = name ? `?action=foto_cc&nombre=${encodeURIComponent(name)}` : "";
   return {
     Original: raw,
+    Nombre: name,
     Etiqueta: label,
     Endpoint_Sugerido: endpoint,
     Abrir_Foto: endpoint,
   };
+}
+
+function fileNameFromPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parts = raw.replace(/\\/g, "/").split("/");
+  return parts[parts.length - 1] || raw;
 }
 
 function renderDoughnut(canvasId, rows, keyField) {
