@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analisis de Reprocesos | SUM Vehiculos</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SUM</div>
+        <div>
+          <h1>Analisis de Reprocesos</h1>
+          <p>Demo solo lectura</p>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Secciones">
+        <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
+        <button class="nav-item" data-view="rechazos" type="button">Rechazos pendientes</button>
+        <button class="nav-item" data-view="detalle" type="button">Detalle / Validacion</button>
+        <button class="nav-item" data-view="kpis" type="button">KPIs sugeridos</button>
+      </nav>
+
+      <div class="status-card">
+        <span class="status-dot"></span>
+        <div>
+          <strong id="statusText">Conectando</strong>
+          <small id="statusSubtext">Apps Script JSONP</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="topbar">
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle">KPIs sugeridos por sistema. No se escribe en las fuentes.</p>
+        </div>
+        <div class="controls">
+          <label>
+            Periodo
+            <select id="daysSelect">
+              <option value="7">Ultimos 7 dias</option>
+              <option value="14">Ultimos 14 dias</option>
+              <option value="30">Ultimos 30 dias</option>
+            </select>
+          </label>
+          <button class="primary-btn" id="refreshBtn" type="button">Actualizar</button>
+        </div>
+      </section>
+
+      <section class="view active" id="dashboardView">
+        <div class="notice">
+          Los KPIs actuales son sugeridos por sistema. Los KPIs oficiales se calcularan con causas validadas manualmente.
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card">
+            <span>Casos de rechazo procesados</span>
+            <strong id="kpiCasos">-</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Danos separados para analisis</span>
+            <strong id="kpiItems">-</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Items Control Calidad</span>
+            <strong id="kpiCc">-</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Items VARI / REVO</span>
+            <strong id="kpiDealer">-</strong>
+          </article>
+          <article class="kpi-card warning">
+            <span>No concluyentes</span>
+            <strong id="kpiNoConcluyente">-</strong>
+          </article>
+          <article class="kpi-card">
+            <span>Estado de demo</span>
+            <strong>Solo lectura</strong>
+          </article>
+        </div>
+
+        <div class="chart-grid">
+          <article class="chart-panel">
+            <h3>Causas raiz sugeridas</h3>
+            <canvas id="causasChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Subcausas sugeridas</h3>
+            <canvas id="subcausasChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Origen del rechazo</h3>
+            <canvas id="origenChart"></canvas>
+          </article>
+          <article class="chart-panel">
+            <h3>Fuente</h3>
+            <canvas id="fuenteChart"></canvas>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="rechazosView">
+        <div class="filter-bar">
+          <label>
+            VIN / texto
+            <input id="searchInput" type="search" placeholder="Buscar VIN, descripcion o causa">
+          </label>
+          <label>
+            Origen
+            <select id="originFilter">
+              <option value="TODOS">Todos</option>
+              <option value="CONTROL_CALIDAD">Control Calidad</option>
+              <option value="IMPORTADOR_VARI_REVO">VARI / REVO</option>
+            </select>
+          </label>
+          <label>
+            Fuente
+            <select id="sourceFilter">
+              <option value="TODOS">Todas</option>
+              <option value="CC">CC</option>
+              <option value="VARI">VARI</option>
+              <option value="REVO">REVO</option>
+            </select>
+          </label>
+          <label>
+            Causa
+            <select id="causeFilter">
+              <option value="">Todas</option>
+              <option value="NUEVO_DANO">Nuevo dano</option>
+              <option value="PINTURA_NO_CONFORME">Pintura no conforme</option>
+              <option value="RECEPCION_NO_DETECTO">Recepcion no detecto</option>
+              <option value="FALLA_ACONDICIONADO">Falla de acondicionado</option>
+              <option value="ERROR_IMPORTADOR">Error importador</option>
+              <option value="NO_CONCLUYENTE">No concluyente</option>
+            </select>
+          </label>
+          <label>
+            Confianza
+            <select id="confidenceFilter">
+              <option value="">Todas</option>
+              <option value="ALTA">Alta</option>
+              <option value="MEDIA">Media</option>
+              <option value="BAJA">Baja</option>
+            </select>
+          </label>
+          <button class="secondary-btn" id="applyFiltersBtn" type="button">Filtrar</button>
+        </div>
+
+        <div class="table-shell">
+          <table>
+            <thead>
+              <tr>
+                <th>VIN</th>
+                <th>Marca / Modelo</th>
+                <th>Origen</th>
+                <th>Fuente</th>
+                <th>Revision</th>
+                <th>Descripcion original</th>
+                <th>Causa sugerida</th>
+                <th>Subcausa</th>
+                <th>Confianza</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rechazosTableBody">
+              <tr><td colspan="10">Carga los datos para ver rechazos pendientes.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="detalleView">
+        <div id="detailEmpty" class="empty-state">
+          Selecciona un rechazo y presiona Analizar.
+        </div>
+
+        <div id="detailContent" class="detail-layout hidden">
+          <section class="detail-panel span-2">
+            <div class="section-heading">
+              <h3>Datos del VIN</h3>
+              <span id="detailConfidence" class="pill">-</span>
+            </div>
+            <div class="info-grid" id="vinInfo"></div>
+          </section>
+
+          <section class="detail-panel">
+            <h3>Dano seleccionado</h3>
+            <div class="info-grid compact" id="itemInfo"></div>
+          </section>
+
+          <section class="detail-panel">
+            <h3>Que dano deseas validar</h3>
+            <select id="eventItemSelector"></select>
+          </section>
+
+          <section class="detail-panel span-2">
+            <h3>Rechazo actual</h3>
+            <div id="currentReject"></div>
+          </section>
+
+          <section class="detail-panel">
+            <h3>Historial Control Calidad</h3>
+            <div id="ccHistory" class="stack"></div>
+          </section>
+
+          <section class="detail-panel">
+            <h3>Inspeccion inicial eSUM</h3>
+            <div id="esumHistory" class="stack"></div>
+          </section>
+
+          <section class="detail-panel span-2">
+            <h3>Validacion manual local</h3>
+            <form id="validationForm" class="validation-form">
+              <label>El dano aparece en inspeccion inicial
+                <select name="dano_aparece_inspeccion_inicial">
+                  <option>SI</option><option>NO</option><option>NO_SE_PUEDE_VER</option>
+                </select>
+              </label>
+              <label>Coincide con un dano ya registrado
+                <select name="coincide_dano_registrado">
+                  <option>SI</option><option>NO</option><option>PARCIAL</option>
+                </select>
+              </label>
+              <label>Coincide con un reproceso anterior
+                <select name="coincide_reproceso_anterior">
+                  <option>SI</option><option>NO</option><option>PARCIAL</option>
+                </select>
+              </label>
+              <label>El trabajo parece mal subsanado
+                <select name="trabajo_mal_subsanado">
+                  <option>SI</option><option>NO</option><option>DUDOSO</option>
+                </select>
+              </label>
+              <label>Parece nuevo dano
+                <select name="parece_nuevo_dano">
+                  <option>SI</option><option>NO</option><option>DUDOSO</option>
+                </select>
+              </label>
+              <label>La evidencia es suficiente
+                <select name="evidencia_suficiente">
+                  <option>SI</option><option>NO</option>
+                </select>
+              </label>
+              <label>Causa final validada
+                <select name="causa_final_validada">
+                  <option>NUEVO_DANO</option>
+                  <option>PINTURA_NO_CONFORME</option>
+                  <option>RECEPCION_NO_DETECTO</option>
+                  <option>FALLA_ACONDICIONADO</option>
+                  <option>ERROR_IMPORTADOR</option>
+                  <option>NO_CONCLUYENTE</option>
+                </select>
+              </label>
+              <label>Subcausa final validada
+                <input name="subcausa_final_validada" type="text">
+              </label>
+              <label>Nivel de confianza manual
+                <select name="confianza_manual">
+                  <option>ALTA</option><option>MEDIA</option><option>BAJA</option>
+                </select>
+              </label>
+              <label class="span-2">Comentario del analista
+                <textarea name="comentario_analista" rows="3"></textarea>
+              </label>
+              <p class="local-note">Demo: esta validacion queda guardada solo en este navegador.</p>
+              <button class="primary-btn" type="submit">Guardar validacion local</button>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="kpisView">
+        <div class="kpi-tables">
+          <article class="detail-panel">
+            <h3>Causa raiz</h3>
+            <div id="causaTable"></div>
+          </article>
+          <article class="detail-panel">
+            <h3>Subcausas</h3>
+            <div id="subcausaTable"></div>
+          </article>
+          <article class="detail-panel">
+            <h3>Fuente</h3>
+            <div id="fuenteTable"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+</body>
+</html>
