@@ -4,6 +4,7 @@ const state = {
   dashboard: null,
   rechazos: [],
   detail: null,
+  detailCache: {},
   charts: {},
 };
 
@@ -45,7 +46,7 @@ function jsonpRequest(action, params = {}) {
     const timeout = window.setTimeout(() => {
       cleanup();
       reject(new Error(`Tiempo agotado consultando ${action}`));
-    }, 45000);
+    }, 60000);
 
     window[callback] = (payload) => {
       cleanup();
@@ -208,18 +209,36 @@ function renderRechazos(items) {
 }
 
 async function loadDetalle(idItem, vin, idEvento) {
+  const cacheKey = `${idItem || ""}|${vin || ""}|${idEvento || ""}`;
+  showView("detalle");
+  setDetailLoading("Cargando detalle y evidencias...");
+
+  if (state.detailCache[cacheKey]) {
+    state.detail = state.detailCache[cacheKey];
+    renderDetalle(state.detail);
+    return;
+  }
+
   try {
     setBusy(true);
     const payload = await jsonpRequest("detalle", { id_item: idItem, vin, id_evento: idEvento });
     if (!payload.ok) throw new Error(payload.error || "No se pudo cargar detalle");
     state.detail = payload;
+    state.detailCache[cacheKey] = payload;
     renderDetalle(payload);
-    showView("detalle");
   } catch (error) {
+    setDetailLoading("No se pudo cargar el detalle. Reintenta desde Rechazos pendientes.");
     toast(error.message);
   } finally {
     setBusy(false);
   }
+}
+
+function setDetailLoading(message) {
+  document.getElementById("detailContent").classList.add("hidden");
+  const empty = document.getElementById("detailEmpty");
+  empty.textContent = message;
+  empty.classList.remove("hidden");
 }
 
 function renderDetalle(data) {
@@ -315,7 +334,7 @@ function renderHistory(targetId, items) {
       <strong>${escapeHtml(item.Fecha_Item || "-")} · ${escapeHtml(item.Fuente || "-")}</strong>
       <p>${escapeHtml(item.Descripcion_Original || "-")}</p>
       <p>${escapeHtml(display(item.Causa_Sugerida))} · ${escapeHtml(display(item.Confianza_Sugerida))}</p>
-      ${renderPhotos((item._foto_refs || []).map((ref) => ({ Original: ref, Url: imageUrl(ref), Etiqueta: "Evidencia" })))}
+      ${renderPhotos((item._foto_refs || []).map((ref) => controlQualityPhoto(ref, "Evidencia")))}
     </article>
   `).join("");
 }
@@ -344,29 +363,58 @@ function renderPhotos(photos) {
   return `
     <div class="media-grid">
       ${photos.map((photo) => {
-        const url = photo.Url || imageUrl(photo.Original || "");
-        if (!url) {
+        const endpointUrl = absoluteApiUrl(photo.Endpoint_Sugerido || "");
+        const rawOpenUrl = endpointUrl || safeOpenUrl(photo.Abrir_Foto || photo.Original || "");
+        const thumbnailUrl = photo.Url || imageUrl(photo.Original || "");
+        const frameUrl = endpointUrl || photo.Preview_Url || drivePreviewUrl(photo.Url || photo.Abrir_Foto || photo.Original || "");
+        const openUrl = rawOpenUrl || thumbnailUrl || frameUrl || "#";
+
+        if (frameUrl) {
           return `
             <div class="media-card">
+              <iframe src="${escapeHtml(frameUrl)}" title="${escapeHtml(photo.Etiqueta || "Foto")}" loading="lazy" referrerpolicy="no-referrer"></iframe>
               <div>
                 <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
-                <a href="${escapeHtml(photo.Abrir_Foto || photo.Original || "#")}" target="_blank" rel="noopener">Abrir foto</a>
+                <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
               </div>
             </div>
           `;
         }
+
+        if (!thumbnailUrl) {
+          return `
+            <div class="media-card no-preview">
+              <div>
+                <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
+                <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
+              </div>
+            </div>
+          `;
+        }
+
         return `
           <div class="media-card">
-            <img src="${escapeHtml(url)}" alt="${escapeHtml(photo.Etiqueta || "Foto")}" loading="lazy" referrerpolicy="no-referrer">
+            <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(photo.Etiqueta || "Foto")}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media-card').classList.add('image-error'); this.remove();">
             <div>
               <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
-              <a href="${escapeHtml(photo.Abrir_Foto || url)}" target="_blank" rel="noopener">Abrir foto</a>
+              <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
             </div>
           </div>
         `;
       }).join("")}
     </div>
   `;
+}
+
+function controlQualityPhoto(ref, label) {
+  const raw = String(ref || "").trim();
+  const endpoint = raw ? `?action=foto_cc&nombre=${encodeURIComponent(raw)}` : "";
+  return {
+    Original: raw,
+    Etiqueta: label,
+    Endpoint_Sugerido: endpoint,
+    Abrir_Foto: endpoint,
+  };
 }
 
 function renderDoughnut(canvasId, rows, keyField) {
@@ -468,12 +516,39 @@ function hydrateLocalValidation(idItem) {
 
 function imageUrl(value) {
   const raw = String(value || "");
-  const byId = raw.match(/[?&]id=([A-Za-z0-9_-]{20,})/);
-  const byFile = raw.match(/\/d\/([A-Za-z0-9_-]{20,})/);
-  const loose = raw.match(/\b([A-Za-z0-9_-]{25,})\b/);
-  const id = byId?.[1] || byFile?.[1] || loose?.[1];
+  const id = driveIdFrom(raw);
   if (id) return `https://drive.google.com/thumbnail?id=${encodeURIComponent(id)}&sz=w1200`;
   return /^https?:\/\//i.test(raw) ? raw : "";
+}
+
+function drivePreviewUrl(value) {
+  const id = driveIdFrom(value);
+  return id ? `https://drive.google.com/file/d/${encodeURIComponent(id)}/preview` : "";
+}
+
+function driveIdFrom(value) {
+  const raw = String(value || "");
+  const byId = raw.match(/[?&]id=([A-Za-z0-9_-]{20,})/);
+  const byFile = raw.match(/\/d\/([A-Za-z0-9_-]{20,})/);
+  if (/^https?:\/\//i.test(raw)) return byId?.[1] || byFile?.[1] || "";
+  const loose = raw.match(/\b([A-Za-z0-9_-]{25,})\b/);
+  return byId?.[1] || byFile?.[1] || loose?.[1] || "";
+}
+
+function safeOpenUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith("?")) return absoluteApiUrl(raw);
+  return "";
+}
+
+function absoluteApiUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (!raw.startsWith("?")) return "";
+  return `${API_URL}${raw}`;
 }
 
 function setText(id, value) {

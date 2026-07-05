@@ -433,6 +433,25 @@ th {
   background: #e9eef6;
 }
 
+.media-card iframe {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 0;
+  display: block;
+  background: #e9eef6;
+}
+
+.media-card.image-error::before,
+.media-card.no-preview::before {
+  content: "Vista previa no disponible";
+  display: grid;
+  place-items: center;
+  min-height: 150px;
+  background: #e9eef6;
+  color: #526070;
+  font-size: 13px;
+}
+
 .media-card div {
   padding: 9px;
   font-size: 12px;
