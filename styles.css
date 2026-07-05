@@ -277,7 +277,7 @@ textarea {
 
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -286,14 +286,47 @@ textarea {
   min-height: 320px;
 }
 
+.chart-causes {
+  grid-column: span 5;
+}
+
+.chart-subcauses {
+  grid-column: span 7;
+  min-height: 360px;
+}
+
+.chart-origin {
+  grid-column: span 4;
+  min-height: 280px;
+}
+
+.chart-source {
+  grid-column: span 8;
+  min-height: 300px;
+}
+
 .chart-panel h3,
 .detail-panel h3 {
   margin: 0 0 12px;
   font-size: 16px;
 }
 
+.chart-box {
+  position: relative;
+  height: 280px;
+}
+
+.chart-subcauses .chart-box {
+  height: 318px;
+}
+
+.chart-box-small {
+  height: 220px;
+}
+
 .chart-panel canvas {
-  max-height: 260px;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .filter-bar {
@@ -331,6 +364,15 @@ th {
   background: #f8fbff;
   color: #35445a;
   z-index: 1;
+}
+
+.description-cell {
+  white-space: pre-line;
+  min-width: 220px;
+}
+
+.description-cell .tag {
+  margin-top: 8px;
 }
 
 .tag,
@@ -567,13 +609,23 @@ th {
 
   .nav,
   .kpi-grid,
-  .chart-grid,
   .detail-layout,
   .info-grid,
   .info-grid.compact,
   .validation-form,
   .kpi-tables {
     grid-template-columns: 1fr;
+  }
+
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-causes,
+  .chart-subcauses,
+  .chart-origin,
+  .chart-source {
+    grid-column: span 1;
   }
 
   .span-2 {

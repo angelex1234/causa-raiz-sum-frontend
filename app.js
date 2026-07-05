@@ -154,10 +154,10 @@ function renderDashboard(data) {
   setText("kpiDealer", data.items_vari_revo);
   setText("kpiNoConcluyente", data.total_no_concluyente);
 
-  renderDoughnut("causasChart", data.causa_raiz_sugerida, "causa");
-  renderDoughnut("subcausasChart", data.subcausas_sugeridas, "subcausa");
-  renderDoughnut("origenChart", data.origen_rechazo, "origen");
-  renderDoughnut("fuenteChart", data.fuente_rechazo, "fuente");
+  renderDoughnut("causasChart", data.causa_raiz_sugerida, "causa", { legendPosition: "bottom" });
+  renderDoughnut("subcausasChart", data.subcausas_sugeridas, "subcausa", { legendPosition: "right", cutout: "58%" });
+  renderDoughnut("origenChart", data.origen_rechazo, "origen", { legendPosition: "bottom", cutout: "60%" });
+  renderDoughnut("fuenteChart", data.fuente_rechazo, "fuente", { legendPosition: "right", cutout: "60%" });
 }
 
 async function loadRechazos() {
@@ -183,28 +183,49 @@ async function loadRechazos() {
 
 function renderRechazos(items) {
   const tbody = document.getElementById("rechazosTableBody");
-  if (!items.length) {
+  const rows = rechazoRowsForTable(items);
+  if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="10">No hay rechazos para los filtros seleccionados.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = items.map((item) => `
+  tbody.innerHTML = rows.map((item) => {
+    const isDealer = isDealerItem(item);
+    const description = isDealer
+      ? item.Descripcion_Evento || item.Descripcion_Original || "-"
+      : item.Descripcion_Original || "-";
+    const damageCount = isDealer && Number(item.Cantidad_Danos_Evento || 0) > 1
+      ? `<br><span class="tag">${escapeHtml(item.Cantidad_Danos_Evento)} danos</span>`
+      : "";
+
+    return `
     <tr>
       <td><strong>${escapeHtml(item.VIN)}</strong></td>
       <td>${escapeHtml([item.Marca, item.Modelo].filter(Boolean).join(" / ") || "-")}</td>
       <td>${escapeHtml(display(item.Origen_Rechazo))}</td>
       <td>${escapeHtml(item.Fuente_Nombre || item.Fuente || "-")}</td>
       <td>${escapeHtml(item.Revision || "-")}</td>
-      <td>${escapeHtml(item.Descripcion_Original || "-")}</td>
+      <td class="description-cell">${escapeHtml(description)}${damageCount}</td>
       <td>${escapeHtml(display(item.Causa_Sugerida))}</td>
       <td>${escapeHtml(item.Subcausa_Sugerida || "-")}</td>
       <td><span class="pill ${String(item.Confianza_Sugerida || "").toLowerCase()}">${escapeHtml(display(item.Confianza_Sugerida))}</span></td>
       <td><button class="secondary-btn" type="button" data-action="analizar" data-id="${escapeHtml(item.ID_Item)}" data-vin="${escapeHtml(item.VIN)}" data-evento="${escapeHtml(item.ID_Evento)}">Analizar</button></td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 
   tbody.querySelectorAll("[data-action='analizar']").forEach((button) => {
     button.addEventListener("click", () => loadDetalle(button.dataset.id, button.dataset.vin, button.dataset.evento));
+  });
+}
+
+function rechazoRowsForTable(items) {
+  const seenDealerEvents = new Set();
+  return (items || []).filter((item) => {
+    if (!isDealerItem(item)) return true;
+    if (seenDealerEvents.has(item.ID_Evento)) return false;
+    seenDealerEvents.add(item.ID_Evento);
+    return true;
   });
 }
 
@@ -247,6 +268,7 @@ function renderDetalle(data) {
 
   const item = data.item_seleccionado || {};
   const vin = data.datos_vin || {};
+  const flow = detailFlow(data);
   const confidence = document.getElementById("detailConfidence");
   confidence.textContent = display(item.Confianza_Sugerida);
   confidence.className = `pill ${String(item.Confianza_Sugerida || "").toLowerCase()}`;
@@ -275,26 +297,54 @@ function renderDetalle(data) {
     Subcausa: item.Subcausa_Sugerida,
   });
 
-  renderItemSelector(data.items_evento || [], item.ID_Item);
+  renderItemSelector(data.items_evento || [], item.ID_Item, flow.showSelector);
   renderCurrentReject(data);
-  renderHistory("ccHistory", data.historial_control_calidad || []);
+  renderControlQualityHistory(data, flow);
   renderEsum(data.inspeccion_inicial_esum || []);
   hydrateLocalValidation(item.ID_Item);
 }
 
-function renderItemSelector(items, selectedId) {
+function detailFlow(data) {
+  const item = data.item_seleccionado || {};
+  const meta = data.flujo_detalle || {};
+  const isControlQuality = meta.es_control_calidad ?? item.Fuente === "CONTROL_CALIDAD";
+  const isDealer = meta.es_vari_revo ?? isDealerItem(item);
+  return {
+    isControlQuality,
+    isDealer,
+    showSelector: meta.requiere_selector_dano ?? isDealer,
+    showControlQualityHistory: meta.mostrar_historial_control_calidad ?? isDealer,
+  };
+}
+
+function renderItemSelector(items, selectedId, showSelector) {
+  const panel = document.getElementById("eventItemSelectorPanel");
   const select = document.getElementById("eventItemSelector");
+  panel.classList.toggle("hidden", !showSelector);
+  if (!showSelector) {
+    select.innerHTML = "";
+    select.onchange = null;
+    return;
+  }
+
   select.innerHTML = items.map((item) => `
     <option value="${escapeHtml(item.ID_Item)}" ${item.ID_Item === selectedId ? "selected" : ""}>
-      ${escapeHtml(`${item.Parte_Normalizada || "Item"} - ${item.Descripcion_Original || ""}`)}
+      ${escapeHtml(itemLabel(item, items))}
     </option>
   `).join("");
+  select.disabled = items.length <= 1;
 
   select.onchange = () => {
     const current = state.detail;
     const next = (current.items_evento || []).find((item) => item.ID_Item === select.value);
     if (next) loadDetalle(next.ID_Item, next.VIN, next.ID_Evento);
   };
+}
+
+function itemLabel(item, items) {
+  const index = Math.max(0, (items || []).findIndex((candidate) => candidate.ID_Item === item.ID_Item)) + 1;
+  const description = item.Descripcion_Original || item.Texto_Normalizado || "Dano";
+  return `${index}. ${description}`;
 }
 
 function renderCurrentReject(data) {
@@ -325,7 +375,7 @@ function renderCurrentReject(data) {
 function renderHistory(targetId, items) {
   const target = document.getElementById(targetId);
   if (!items.length) {
-    target.innerHTML = `<div class="history-card">Sin registros.</div>`;
+    target.innerHTML = `<div class="history-card">Sin fotos de Control Calidad para este VIN.</div>`;
     return;
   }
 
@@ -337,6 +387,20 @@ function renderHistory(targetId, items) {
       ${renderPhotos((item._foto_refs || []).map((ref) => controlQualityPhoto(ref, "Evidencia")))}
     </article>
   `).join("");
+}
+
+function renderControlQualityHistory(data, flow) {
+  const panel = document.getElementById("ccHistoryPanel");
+  const esumPanel = document.getElementById("esumPanel");
+  panel.classList.toggle("hidden", !flow.showControlQualityHistory);
+  esumPanel.classList.toggle("span-2", !flow.showControlQualityHistory);
+
+  if (!flow.showControlQualityHistory) {
+    document.getElementById("ccHistory").innerHTML = "";
+    return;
+  }
+
+  renderHistory("ccHistory", data.historial_control_calidad || []);
 }
 
 function renderEsum(rows) {
@@ -426,7 +490,7 @@ function fileNameFromPath(value) {
   return parts[parts.length - 1] || raw;
 }
 
-function renderDoughnut(canvasId, rows, keyField) {
+function renderDoughnut(canvasId, rows, keyField, config = {}) {
   const ctx = document.getElementById(canvasId);
   if (!ctx || !window.Chart) return;
   if (state.charts[canvasId]) state.charts[canvasId].destroy();
@@ -449,11 +513,25 @@ function renderDoughnut(canvasId, rows, keyField) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: "bottom", labels: { boxWidth: 12 } },
+        legend: {
+          position: config.legendPosition || "bottom",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            padding: 12,
+            usePointStyle: true,
+            font: { size: 12 },
+          },
+        },
       },
-      cutout: "62%",
+      layout: { padding: 4 },
+      cutout: config.cutout || "62%",
     },
   });
+}
+
+function isDealerItem(item) {
+  return item && (item.Fuente === "VARI" || item.Fuente === "REVO" || item.Origen_Rechazo === "IMPORTADOR_VARI_REVO");
 }
 
 function renderKpiTables(data) {
