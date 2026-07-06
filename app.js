@@ -3,6 +3,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzD-c-_PqbJ9Rj1BaIIkES5
 const state = {
   dashboard: null,
   rechazos: [],
+  rechazosMeta: null,
+  rechazoEstado: "PENDIENTE",
   detail: null,
   detailCache: {},
   charts: {},
@@ -87,8 +89,15 @@ function bindControls() {
   document.getElementById("searchInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") loadRechazos();
   });
+  document.querySelectorAll("[data-rechazo-estado]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.rechazoEstado = button.dataset.rechazoEstado || "PENDIENTE";
+      loadRechazos();
+    });
+  });
 
   document.getElementById("validationForm").addEventListener("submit", saveLocalValidation);
+  document.getElementById("markRejectDoneBtn").addEventListener("click", markRejectState);
   document.getElementById("manualDamageInput").addEventListener("input", updateManualDamageState);
   document.getElementById("photoModalClose").addEventListener("click", closePhotoModal);
   document.getElementById("photoModal").addEventListener("click", (event) => {
@@ -122,7 +131,7 @@ function showView(viewName) {
   document.getElementById("pageTitle").textContent = titles[viewName][0];
   document.getElementById("pageSubtitle").textContent = titles[viewName][1];
 
-  if (viewName === "rechazos" && !state.rechazos.length) loadRechazos();
+  if (viewName === "rechazos") loadRechazos();
   if (viewName === "kpis" && state.dashboard) renderKpiTables(state.dashboard);
 }
 
@@ -183,11 +192,13 @@ async function loadRechazos() {
       fuente: document.getElementById("sourceFilter").value,
       causa: document.getElementById("causeFilter").value,
       confianza: document.getElementById("confidenceFilter").value,
+      estado: state.rechazoEstado,
       q: document.getElementById("searchInput").value.trim(),
     });
     if (!payload.ok) throw new Error(payload.error || "No se pudo cargar rechazos");
     state.rechazos = payload.items || [];
-    renderRechazos(state.rechazos);
+    state.rechazosMeta = payload;
+    renderRechazos(state.rechazos, payload);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -195,9 +206,10 @@ async function loadRechazos() {
   }
 }
 
-function renderRechazos(items) {
+function renderRechazos(items, meta = {}) {
   const tbody = document.getElementById("rechazosTableBody");
   const rows = rechazoRowsForTable(items);
+  renderRechazosStatus(meta, rows.length);
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="10">No hay rechazos para los filtros seleccionados.</td></tr>`;
     return;
@@ -211,6 +223,7 @@ function renderRechazos(items) {
     const damageCount = isDealer && Number(item.Cantidad_Danos_Evento || 0) > 1
       ? `<br><span class="tag">${escapeHtml(item.Cantidad_Danos_Evento)} danos</span>`
       : "";
+    const stateTag = item.Analizado_Rechazo ? `<br><span class="tag done">Hecho</span>` : "";
 
     return `
     <tr>
@@ -219,7 +232,7 @@ function renderRechazos(items) {
       <td>${escapeHtml(display(item.Origen_Rechazo))}</td>
       <td>${escapeHtml(item.Fuente_Nombre || item.Fuente || "-")}</td>
       <td>${escapeHtml(item.Revision || "-")}</td>
-      <td class="description-cell">${escapeHtml(description)}${damageCount}</td>
+      <td class="description-cell">${escapeHtml(description)}${damageCount}${stateTag}</td>
       <td>${escapeHtml(display(item.Causa_Sugerida))}</td>
       <td>${escapeHtml(item.Subcausa_Sugerida || "-")}</td>
       <td><span class="pill ${String(item.Confianza_Sugerida || "").toLowerCase()}">${escapeHtml(display(item.Confianza_Sugerida))}</span></td>
@@ -231,6 +244,17 @@ function renderRechazos(items) {
   tbody.querySelectorAll("[data-action='analizar']").forEach((button) => {
     button.addEventListener("click", () => loadDetalle(button.dataset.id, button.dataset.vin, button.dataset.evento));
   });
+}
+
+function renderRechazosStatus(meta = {}, visibleRows = 0) {
+  document.querySelectorAll("[data-rechazo-estado]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.rechazoEstado === state.rechazoEstado);
+  });
+  const pendientes = Number(meta.total_pendientes || 0);
+  const hechos = Number(meta.total_hechos || 0);
+  const mostrando = Number(meta.total || visibleRows || 0);
+  document.getElementById("rechazosCountSummary").textContent =
+    `Mostrando ${mostrando} · Pendientes ${pendientes} · Hechos ${hechos}`;
 }
 
 function rechazoRowsForTable(items) {
@@ -296,6 +320,7 @@ function renderDetalle(data) {
     Fuente: vin.Fuente_Actual,
     Fecha: vin.Fecha_Rechazo,
     Responsable: vin.Responsable,
+    "Estado analisis": item.Estado_Rechazo || "PENDIENTE",
     "Causa sugerida": display(item.Causa_Sugerida),
     "Motivo sugerencia": item.Motivo_Sugerencia,
   });
@@ -317,6 +342,7 @@ function renderDetalle(data) {
   renderInitialEsum(data.inspeccion_inicial_esum || []);
   hydrateLocalValidation(item.ID_Item);
   updateManualDamageState();
+  renderRejectStateButton(item);
 }
 
 function detailFlow(data) {
@@ -634,6 +660,15 @@ function renderInfo(targetId, data) {
   `).join("");
 }
 
+function renderRejectStateButton(item) {
+  const button = document.getElementById("markRejectDoneBtn");
+  if (!button) return;
+  const done = Boolean(item && item.Analizado_Rechazo);
+  button.textContent = done ? "Reabrir rechazo" : "Marcar rechazo analizado";
+  button.classList.toggle("danger-lite", done);
+  button.disabled = false;
+}
+
 async function saveLocalValidation(event) {
   event.preventDefault();
   const item = state.detail && state.detail.item_seleccionado;
@@ -675,6 +710,54 @@ async function saveLocalValidation(event) {
     toast(error.message);
   } finally {
     button.disabled = false;
+  }
+}
+
+async function markRejectState() {
+  const item = state.detail && state.detail.item_seleccionado;
+  if (!item) return;
+
+  const button = document.getElementById("markRejectDoneBtn");
+  const status = document.getElementById("validationSaveStatus");
+  const form = document.getElementById("validationForm");
+  const formData = new FormData(form);
+  const payload = Object.fromEntries(formData.entries());
+  const nextState = item.Analizado_Rechazo ? "PENDIENTE" : "HECHO";
+  const scope = isDealerItem(item) ? "EVENTO" : "ITEM";
+  const manualDamage = document.getElementById("manualDamageInput").value.trim();
+
+  payload.ID_Item = item.ID_Item;
+  payload.ID_Evento = item.ID_Evento;
+  payload.VIN = item.VIN;
+  payload.Origen_Rechazo = item.Origen_Rechazo;
+  payload.Fuente = item.Fuente;
+  payload.Revision = item.Revision;
+  payload.Descripcion_Item = item.Descripcion_Original;
+  payload.Dano_Validado = manualDamage || selectedDamageText();
+  payload.Dano_Manual = manualDamage;
+  payload.Causa_Sugerida = item.Causa_Sugerida;
+  payload.Subcausa_Sugerida = item.Subcausa_Sugerida;
+  payload.Confianza_Sugerida = item.Confianza_Sugerida;
+  payload.Responsable_Item = item.Responsable || "";
+  payload.Fecha_Item = item.Fecha_Item || "";
+  payload.Estado_Rechazo = nextState;
+  payload.Alcance_Analisis = scope;
+
+  try {
+    button.disabled = true;
+    status.textContent = nextState === "HECHO" ? "Marcando rechazo como analizado..." : "Reabriendo rechazo...";
+    const response = await jsonpRequest("marcar_rechazo_estado", payload);
+    if (!response.ok) throw new Error(response.error || "No se pudo actualizar el estado");
+
+    state.detailCache = {};
+    state.rechazos = [];
+    status.textContent = response.mensaje || "Estado actualizado.";
+    toast(response.mensaje || "Estado actualizado.");
+    await loadDetalle(item.ID_Item, item.VIN, item.ID_Evento);
+  } catch (error) {
+    status.textContent = "No se pudo actualizar el estado del rechazo.";
+    toast(error.message);
+    renderRejectStateButton(item);
   }
 }
 

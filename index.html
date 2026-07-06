@@ -154,6 +154,15 @@
           <button class="secondary-btn" id="applyFiltersBtn" type="button">Filtrar</button>
         </div>
 
+        <div class="status-row">
+          <div class="status-tabs" role="group" aria-label="Estado del rechazo">
+            <button class="status-tab active" type="button" data-rechazo-estado="PENDIENTE">Pendientes</button>
+            <button class="status-tab" type="button" data-rechazo-estado="HECHO">Hechos</button>
+            <button class="status-tab" type="button" data-rechazo-estado="TODOS">Todos</button>
+          </div>
+          <span id="rechazosCountSummary" class="count-summary">Mostrando 0 · Pendientes 0 · Hechos 0</span>
+        </div>
+
         <div class="table-shell">
           <table>
             <thead>
@@ -222,7 +231,10 @@
           </div>
 
           <section class="detail-panel span-2">
-            <h3>Validacion manual</h3>
+            <div class="section-heading">
+              <h3>Validacion manual</h3>
+              <button class="secondary-btn" id="markRejectDoneBtn" type="button">Marcar rechazo analizado</button>
+            </div>
             <form id="validationForm" class="validation-form">
               <label>El dano aparece en inspeccion inicial
                 <select name="dano_aparece_inspeccion_inicial">
