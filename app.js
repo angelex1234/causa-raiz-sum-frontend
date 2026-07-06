@@ -26,6 +26,41 @@ const labels = {
 
 const palette = ["#1f7ae0", "#22c55e", "#f4c430", "#ef4444", "#38bdf8", "#0b1f3a", "#8b5cf6", "#f97316"];
 
+const finalSubcauses = {
+  NUEVO_DANO: ["RAYON_RECIENTE", "ABOLLADURA_RECIENTE", "ARANONES", "PORTAZO_MOVILIZACION", "DANO_ZAPATO", "DANO_NO_IDENTIFICADO"],
+  PINTURA_NO_CONFORME: ["FALLA_PINTURA", "GRUMO", "PULVERIZADO", "MAL_PULIDO", "TRABAJO_INCOMPLETO", "DANO_NO_SUBSANADO"],
+  RECEPCION_NO_DETECTO: ["DANO_PREEXISTENTE_NO_MARCADO", "SECCION_PASA_CON_EVIDENCIA", "FOTO_INICIAL_INSUFICIENTE", "CHECKLIST_INCOMPLETO"],
+  FALLA_ACONDICIONADO: ["TECHO_SUCIO", "TAPIZ_MANCHADO", "SUCIEDAD_INTERIOR", "RESIDUOS", "LIMPIEZA_INCOMPLETA"],
+  ERROR_IMPORTADOR: ["MALA_VALIDACION_IMPORTADOR", "DEFECTO_ORIGEN_NO_REPORTADO", "UNIDAD_VALIDADA_CON_DEFECTO"],
+  NO_CONCLUYENTE: ["SIN_COINCIDENCIA", "SIN_EVIDENCIA", "FOTO_NO_CLARA", "TEXTO_NO_NORMALIZABLE"],
+};
+
+const workCatalog = {
+  P01: { description: "Pulido Regular", diagnosis: "Ray", type: "Solo estetica / Leve", panos: 0, severity: 1, timeText: "20min", hours: 0.3333 },
+  P02A: { description: "Pulido + Pano Puntual (< 0.5 panos)", diagnosis: "Quine", type: "Dano puntual leve", panos: 0.5, severity: 2, timeText: "35min", hours: 0.5833 },
+  P02B: { description: "Pulido + Pano Simple (+1 pano)", diagnosis: "Ray", type: "Pintura estandar (1 pano)", panos: 1, severity: 3, timeText: "45min", hours: 0.75 },
+  P03: { description: "PDR + Pulido", diagnosis: "Abolladura", type: "Reparacion estandar", panos: 1, severity: 4, timeText: "1h 15min", hours: 1.25 },
+  P02C: { description: "Pulido + Pano Doble (1-2 panos)", diagnosis: "Ray", type: "Pintura estandar (2 panos)", panos: 2, severity: 5, timeText: "1h 30min", hours: 1.5 },
+  P04: { description: "Pulido + Pano Doble (1-2 panos)", diagnosis: "Ray / Aboll", type: "Combinado (PDR + Pintura)", panos: 2, severity: 6, timeText: "1.5 dias", hours: 12 },
+  P05: { description: "Pulido + Pano Triple (3 panos + Planchado)", diagnosis: "Abolladura grave", type: "Reparacion mayor", panos: 3, severity: 7, timeText: "2.5 dias", hours: 20 },
+  "N/A": { description: "En revision", diagnosis: "", type: "En revision", panos: 0, severity: 0, timeText: "0", hours: 0 },
+  OK: { description: "Sin intervencion", diagnosis: "", type: "Sin intervencion", panos: 0, severity: 0, timeText: "0", hours: 0 },
+};
+
+const laborCost = {
+  PINTOR: { salary: 2000 },
+  DESABOLLADOR: { salary: 4000 },
+  MIXTO: { salary: 3000 },
+  NO_APLICA: { salary: 0 },
+};
+
+const laborParams = {
+  workDays: 26,
+  hoursPerDay: 8,
+  hoursMonth: 208,
+  factor: 1,
+};
+
 document.addEventListener("DOMContentLoaded", () => {
   bindNavigation();
   bindControls();
@@ -98,6 +133,10 @@ function bindControls() {
 
   document.getElementById("validationForm").addEventListener("submit", saveLocalValidation);
   document.getElementById("markRejectDoneBtn").addEventListener("click", markRejectState);
+  document.getElementById("finalCauseSelect").addEventListener("change", () => updateFinalSubcauses());
+  document.getElementById("workCodeSelect").addEventListener("change", () => updateOperationalImpact({ manualCode: true }));
+  document.getElementById("laborRoleSelect").addEventListener("change", () => updateOperationalImpact({ manualRole: true }));
+  document.getElementById("impactTypeSelect").addEventListener("change", () => updateOperationalImpact({ manualType: true }));
   document.getElementById("manualDamageInput").addEventListener("input", updateManualDamageState);
   document.getElementById("photoModalClose").addEventListener("click", closePhotoModal);
   document.getElementById("photoModal").addEventListener("click", (event) => {
@@ -340,7 +379,9 @@ function renderDetalle(data) {
   renderCurrentReject(data);
   renderControlQualityHistory(data, flow);
   renderInitialEsum(data.inspeccion_inicial_esum || []);
+  configureValidationForm(data, flow);
   hydrateLocalValidation(item.ID_Item);
+  configureValidationForm(data, flow);
   updateManualDamageState();
   renderRejectStateButton(item);
 }
@@ -660,6 +701,181 @@ function renderInfo(targetId, data) {
   `).join("");
 }
 
+function configureValidationForm(data, flow) {
+  const item = data.item_seleccionado || {};
+  const form = document.getElementById("validationForm");
+  const hasLocalValidation = form.dataset.hasLocalValidation === "1";
+  const causeSelect = document.getElementById("finalCauseSelect");
+  const currentCause = hasLocalValidation
+    ? (causeSelect.value || item.Causa_Sugerida || "NUEVO_DANO")
+    : (item.Causa_Sugerida || causeSelect.value || "NUEVO_DANO");
+  causeSelect.value = finalSubcauses[currentCause] ? currentCause : "NUEVO_DANO";
+  updateFinalSubcauses();
+
+  const panel = document.getElementById("operationalImpactPanel");
+  const note = document.getElementById("operationalImpactNote");
+  const isControlQuality = Boolean(flow && flow.isControlQuality);
+  panel.classList.toggle("hidden", !isControlQuality);
+  note.classList.toggle("hidden", isControlQuality);
+  panel.querySelectorAll("input, select").forEach((field) => {
+    field.disabled = !isControlQuality;
+  });
+
+  const codeSelect = document.getElementById("workCodeSelect");
+  if (!codeSelect.options.length) {
+    codeSelect.innerHTML = Object.entries(workCatalog).map(([code, info]) => `
+      <option value="${escapeHtml(code)}">${escapeHtml(code)} - ${escapeHtml(info.description)}</option>
+    `).join("");
+  }
+
+  [codeSelect, document.getElementById("laborRoleSelect"), document.getElementById("impactTypeSelect")].forEach((field) => {
+    field.required = isControlQuality;
+  });
+
+  if (!isControlQuality) {
+    clearOperationalImpact();
+    return;
+  }
+
+  const suggestedCode = item.Codigo_Trabajo_Sugerido || suggestWorkCode(item);
+  document.getElementById("suggestedWorkCodeInput").value = suggestedCode;
+  document.getElementById("suggestedWorkCodeTag").textContent = `Sugerido: ${suggestedCode || "N/A"}`;
+  if (!hasLocalValidation) codeSelect.value = suggestedCode || "N/A";
+  if (!workCatalog[codeSelect.value]) codeSelect.value = suggestedCode || "N/A";
+  updateOperationalImpact({ manualRole: hasLocalValidation, manualType: hasLocalValidation });
+}
+
+function updateFinalSubcauses() {
+  const causeSelect = document.getElementById("finalCauseSelect");
+  const subcauseSelect = document.getElementById("finalSubcauseSelect");
+  const current = subcauseSelect.value;
+  const subcauses = finalSubcauses[causeSelect.value] || finalSubcauses.NUEVO_DANO;
+  subcauseSelect.innerHTML = subcauses.map((subcause) => `
+    <option value="${escapeHtml(subcause)}">${escapeHtml(subcause)}</option>
+  `).join("");
+  if (subcauses.includes(current)) {
+    subcauseSelect.value = current;
+  }
+}
+
+function updateOperationalImpact(options = {}) {
+  const item = state.detail && state.detail.item_seleccionado;
+  const codeSelect = document.getElementById("workCodeSelect");
+  const roleSelect = document.getElementById("laborRoleSelect");
+  const typeSelect = document.getElementById("impactTypeSelect");
+  const code = workCatalog[codeSelect.value] ? codeSelect.value : (suggestWorkCode(item) || "N/A");
+  const catalog = workCatalog[code] || workCatalog["N/A"];
+
+  if (!options.manualRole) {
+    roleSelect.value = suggestedRoleForCode(code);
+  }
+  if (!options.manualType) {
+    typeSelect.value = suggestedInterventionForCode(code);
+  }
+
+  const role = laborCost[roleSelect.value] ? roleSelect.value : "NO_APLICA";
+  const salary = laborCost[role].salary;
+  const costHour = laborParams.hoursMonth ? salary / laborParams.hoursMonth * laborParams.factor : 0;
+  const costTotal = catalog.hours * costHour;
+  const impact = {
+    Descripcion_Trabajo: catalog.description,
+    Diagnostico_Trabajo: catalog.diagnosis,
+    Panos_Estimados: catalog.panos,
+    Gravedad: catalog.severity,
+    Tiempo_Estimado_Texto: catalog.timeText,
+    Tiempo_Estimado_Horas: round(catalog.hours, 4),
+    Sueldo_Mensual_Usado: round(salary, 2),
+    Horas_Mes_Usadas: laborParams.hoursMonth,
+    Factor_Costo_Usado: laborParams.factor,
+    Costo_Hora_Usado: round(costHour, 2),
+    Costo_Mano_Obra_Estimado: round(costTotal, 2),
+  };
+
+  Object.entries(impact).forEach(([name, value]) => {
+    const field = document.querySelector(`#validationForm [name="${name}"]`);
+    if (field) field.value = value;
+  });
+
+  document.getElementById("impactSummary").innerHTML = `
+    <div class="impact-card"><span>Codigo</span><strong>${escapeHtml(code)}</strong></div>
+    <div class="impact-card"><span>Trabajo</span><strong>${escapeHtml(catalog.description)}</strong></div>
+    <div class="impact-card"><span>Diagnostico</span><strong>${escapeHtml(catalog.diagnosis || "-")}</strong></div>
+    <div class="impact-card"><span>Panos</span><strong>${escapeHtml(catalog.panos)}</strong></div>
+    <div class="impact-card"><span>Gravedad</span><strong>${escapeHtml(catalog.severity)}</strong></div>
+    <div class="impact-card"><span>Tiempo</span><strong>${escapeHtml(catalog.timeText)}</strong></div>
+    <div class="impact-card"><span>Rol</span><strong>${escapeHtml(role)}</strong></div>
+    <div class="impact-card"><span>Costo hora</span><strong>${money(costHour)}</strong></div>
+    <div class="impact-card"><span>Costo estimado</span><strong>${money(costTotal)}</strong></div>
+  `;
+}
+
+function clearOperationalImpact() {
+  const form = document.getElementById("validationForm");
+  [
+    "Codigo_Trabajo_Sugerido",
+    "Codigo_Trabajo_Validado",
+    "Descripcion_Trabajo",
+    "Diagnostico_Trabajo",
+    "Panos_Estimados",
+    "Gravedad",
+    "Tiempo_Estimado_Texto",
+    "Tiempo_Estimado_Horas",
+    "Rol_Mano_Obra",
+    "Sueldo_Mensual_Usado",
+    "Horas_Mes_Usadas",
+    "Factor_Costo_Usado",
+    "Costo_Hora_Usado",
+    "Costo_Mano_Obra_Estimado",
+  ].forEach((name) => {
+    if (form.elements[name]) form.elements[name].value = "";
+  });
+  document.getElementById("impactSummary").innerHTML = "";
+}
+
+function suggestWorkCode(item) {
+  if (!item) return "N/A";
+  const text = plainText([
+    item.Tipo_Dano_Normalizado,
+    item.Texto_Normalizado,
+    item.Descripcion_Original,
+  ].join(" "));
+  const panos = estimatedPanos(text);
+  const hasRayon = /\bRAYON\b/.test(text);
+  const hasAbolladura = /\b(ABOLLADURA|GOLPE)\b/.test(text);
+
+  if (/\b(SUCIEDAD ACONDICIONADO|SUCIO|SUCIEDAD|LIMPIEZA|RESIDUO|TAPIZ|MANCHA)\b/.test(text)) return "N/A";
+  if (/\b(GRAVE|PLANCHADO|FUERTE)\b/.test(text)) return "P05";
+  if (hasAbolladura && hasRayon) return "P04";
+  if (/\bQUINE\b/.test(text)) return "P02A";
+  if (hasAbolladura) return "P03";
+  if (hasRayon) {
+    if (panos >= 2) return "P02C";
+    if (panos === 1) return "P02B";
+    return "P01";
+  }
+  return "N/A";
+}
+
+function estimatedPanos(text) {
+  const match = plainText(text).match(/\b([0-9]+(?:[.,][0-9]+)?)\s*PANO(S)?\b/);
+  return match ? Number(String(match[1]).replace(",", ".")) || 0 : 0;
+}
+
+function suggestedRoleForCode(code) {
+  if (["P01", "P02A", "P02B", "P02C"].includes(code)) return "PINTOR";
+  if (code === "P03") return "DESABOLLADOR";
+  if (code === "P04" || code === "P05") return "MIXTO";
+  return "NO_APLICA";
+}
+
+function suggestedInterventionForCode(code) {
+  if (["P01", "P02A", "P02B", "P02C"].includes(code)) return "PINTURA";
+  if (code === "P03") return "DESABOLLADO";
+  if (code === "P04" || code === "P05") return "PINTURA_DESABOLLADO";
+  if (code === "OK") return "SIN_INTERVENCION";
+  return "EN_REVISION";
+}
+
 function renderRejectStateButton(item) {
   const button = document.getElementById("markRejectDoneBtn");
   if (!button) return;
@@ -673,6 +889,13 @@ async function saveLocalValidation(event) {
   event.preventDefault();
   const item = state.detail && state.detail.item_seleccionado;
   if (!item) return;
+
+  const flow = detailFlow(state.detail || {});
+  if (flow.isControlQuality) updateOperationalImpact();
+  if (!event.currentTarget.checkValidity()) {
+    event.currentTarget.reportValidity();
+    return;
+  }
 
   const button = document.getElementById("saveValidationBtn");
   const status = document.getElementById("validationSaveStatus");
@@ -767,11 +990,16 @@ function hydrateLocalValidation(idItem) {
   const manual = document.getElementById("manualDamageInput");
   const status = document.getElementById("validationSaveStatus");
   form.reset();
+  form.dataset.hasLocalValidation = raw ? "1" : "";
   manual.value = "";
   status.textContent = "Se guarda en la hoja dedicada de validaciones.";
   if (!raw) return;
   try {
     const saved = JSON.parse(raw);
+    if (saved.causa_final_validada && form.elements.causa_final_validada) {
+      form.elements.causa_final_validada.value = saved.causa_final_validada;
+      updateFinalSubcauses();
+    }
     Object.entries(saved).forEach(([key, value]) => {
       if (form.elements[key]) form.elements[key].value = value;
     });
@@ -859,6 +1087,25 @@ function absoluteApiUrl(value) {
 
 function setText(id, value) {
   document.getElementById(id).textContent = value ?? "-";
+}
+
+function plainText(value) {
+  return String(value || "")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function round(value, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round((Number(value) || 0) * factor) / factor;
+}
+
+function money(value) {
+  return `S/ ${round(value, 2).toFixed(2)}`;
 }
 
 function display(value) {

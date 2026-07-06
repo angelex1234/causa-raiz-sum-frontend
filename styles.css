@@ -637,6 +637,53 @@ th {
   gap: 12px;
 }
 
+.operational-impact {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fbff;
+  display: grid;
+  gap: 12px;
+}
+
+.operational-impact h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.impact-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.impact-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.impact-card {
+  border: 1px solid #d7e5f4;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.impact-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.impact-card strong {
+  display: block;
+  color: var(--ink);
+  font-size: 14px;
+}
+
 .local-note {
   margin: 0;
   color: var(--muted);
@@ -765,6 +812,8 @@ th {
   .info-grid,
   .info-grid.compact,
   .validation-form,
+  .impact-form-grid,
+  .impact-summary,
   .kpi-tables {
     grid-template-columns: 1fr;
   }

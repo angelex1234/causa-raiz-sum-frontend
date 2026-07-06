@@ -236,38 +236,8 @@
               <button class="secondary-btn" id="markRejectDoneBtn" type="button">Marcar rechazo analizado</button>
             </div>
             <form id="validationForm" class="validation-form">
-              <label>El dano aparece en inspeccion inicial
-                <select name="dano_aparece_inspeccion_inicial">
-                  <option>SI</option><option>NO</option><option>NO_SE_PUEDE_VER</option>
-                </select>
-              </label>
-              <label>Coincide con un dano ya registrado
-                <select name="coincide_dano_registrado">
-                  <option>SI</option><option>NO</option><option>PARCIAL</option>
-                </select>
-              </label>
-              <label>Coincide con un reproceso anterior
-                <select name="coincide_reproceso_anterior">
-                  <option>SI</option><option>NO</option><option>PARCIAL</option>
-                </select>
-              </label>
-              <label>El trabajo parece mal subsanado
-                <select name="trabajo_mal_subsanado">
-                  <option>SI</option><option>NO</option><option>DUDOSO</option>
-                </select>
-              </label>
-              <label>Parece nuevo dano
-                <select name="parece_nuevo_dano">
-                  <option>SI</option><option>NO</option><option>DUDOSO</option>
-                </select>
-              </label>
-              <label>La evidencia es suficiente
-                <select name="evidencia_suficiente">
-                  <option>SI</option><option>NO</option>
-                </select>
-              </label>
-              <label>Causa final validada
-                <select name="causa_final_validada">
+              <label>Causa raiz final validada
+                <select id="finalCauseSelect" name="causa_final_validada" required>
                   <option>NUEVO_DANO</option>
                   <option>PINTURA_NO_CONFORME</option>
                   <option>RECEPCION_NO_DETECTO</option>
@@ -277,19 +247,62 @@
                 </select>
               </label>
               <label>Subcausa final validada
-                <input name="subcausa_final_validada" type="text">
-              </label>
-              <label>Nivel de confianza manual
-                <select name="confianza_manual">
-                  <option>ALTA</option><option>MEDIA</option><option>BAJA</option>
-                </select>
+                <select id="finalSubcauseSelect" name="subcausa_final_validada" required></select>
               </label>
               <label>Analista
                 <input name="analista" type="text" placeholder="Nombre del supervisor">
               </label>
               <label class="span-2">Comentario del analista
-                <textarea name="comentario_analista" rows="3"></textarea>
+                <textarea name="comentario_analista" rows="3" placeholder="Describe por que se valida esta causa raiz."></textarea>
               </label>
+
+              <div class="operational-impact span-2 hidden" id="operationalImpactPanel">
+                <div class="section-heading">
+                  <h4>Impacto operativo del reproceso</h4>
+                  <span class="tag" id="suggestedWorkCodeTag">Sugerido: N/A</span>
+                </div>
+                <div class="impact-form-grid">
+                  <label>Tipo de intervencion
+                    <select id="impactTypeSelect" name="Tipo_Intervencion">
+                      <option>PINTURA</option>
+                      <option>DESABOLLADO</option>
+                      <option>PINTURA_DESABOLLADO</option>
+                      <option>ACONDICIONADO</option>
+                      <option>REPUESTO</option>
+                      <option>SIN_INTERVENCION</option>
+                      <option>EN_REVISION</option>
+                    </select>
+                  </label>
+                  <label>Codigo de trabajo
+                    <select id="workCodeSelect" name="Codigo_Trabajo_Validado"></select>
+                  </label>
+                  <label>Rol mano de obra
+                    <select id="laborRoleSelect" name="Rol_Mano_Obra">
+                      <option>PINTOR</option>
+                      <option>DESABOLLADOR</option>
+                      <option>MIXTO</option>
+                      <option>NO_APLICA</option>
+                    </select>
+                  </label>
+                </div>
+                <input type="hidden" id="suggestedWorkCodeInput" name="Codigo_Trabajo_Sugerido">
+                <input type="hidden" name="Descripcion_Trabajo">
+                <input type="hidden" name="Diagnostico_Trabajo">
+                <input type="hidden" name="Panos_Estimados">
+                <input type="hidden" name="Gravedad">
+                <input type="hidden" name="Tiempo_Estimado_Texto">
+                <input type="hidden" name="Tiempo_Estimado_Horas">
+                <input type="hidden" name="Sueldo_Mensual_Usado">
+                <input type="hidden" name="Horas_Mes_Usadas">
+                <input type="hidden" name="Factor_Costo_Usado">
+                <input type="hidden" name="Costo_Hora_Usado">
+                <input type="hidden" name="Costo_Mano_Obra_Estimado">
+                <div class="impact-summary" id="impactSummary"></div>
+              </div>
+
+              <p class="local-note span-2 hidden" id="operationalImpactNote">
+                El impacto operativo se calcula por ahora solo para Control Calidad, porque ahi el dano viene separado por item.
+              </p>
               <p class="local-note" id="validationSaveStatus">Se guarda en la hoja dedicada de validaciones.</p>
               <button class="primary-btn" id="saveValidationBtn" type="submit">Guardar validacion</button>
             </form>
