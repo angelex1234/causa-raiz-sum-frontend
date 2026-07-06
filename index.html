@@ -199,25 +199,30 @@
           <section class="detail-panel" id="eventItemSelectorPanel">
             <h3>Que dano deseas validar</h3>
             <select id="eventItemSelector"></select>
+            <label class="manual-damage">Dano manual
+              <input id="manualDamageInput" type="text" placeholder="Escribe el dano exacto si la particion no sirve">
+            </label>
           </section>
+
+          <div class="evidence-grid span-2" id="evidenceGrid">
+            <section class="detail-panel evidence-column" id="currentRejectPanel">
+              <h3>Rechazo actual</h3>
+              <div id="currentReject" class="stack evidence-stack"></div>
+            </section>
+
+            <section class="detail-panel evidence-column" id="ccHistoryPanel">
+              <h3>Fotos Control Calidad / Reprocesos</h3>
+              <div id="ccHistory" class="stack evidence-stack"></div>
+            </section>
+
+            <section class="detail-panel evidence-column" id="esumPanel">
+              <h3>Inspeccion inicial eSUM</h3>
+              <div id="esumHistory" class="stack evidence-stack"></div>
+            </section>
+          </div>
 
           <section class="detail-panel span-2">
-            <h3>Rechazo actual</h3>
-            <div id="currentReject"></div>
-          </section>
-
-          <section class="detail-panel" id="ccHistoryPanel">
-            <h3>Fotos Control Calidad / Reprocesos</h3>
-            <div id="ccHistory" class="stack"></div>
-          </section>
-
-          <section class="detail-panel" id="esumPanel">
-            <h3>Inspeccion inicial eSUM</h3>
-            <div id="esumHistory" class="stack"></div>
-          </section>
-
-          <section class="detail-panel span-2">
-            <h3>Validacion manual local</h3>
+            <h3>Validacion manual</h3>
             <form id="validationForm" class="validation-form">
               <label>El dano aparece en inspeccion inicial
                 <select name="dano_aparece_inspeccion_inicial">
@@ -267,11 +272,14 @@
                   <option>ALTA</option><option>MEDIA</option><option>BAJA</option>
                 </select>
               </label>
+              <label>Analista
+                <input name="analista" type="text" placeholder="Nombre del supervisor">
+              </label>
               <label class="span-2">Comentario del analista
                 <textarea name="comentario_analista" rows="3"></textarea>
               </label>
-              <p class="local-note">Demo: esta validacion queda guardada solo en este navegador.</p>
-              <button class="primary-btn" type="submit">Guardar validacion local</button>
+              <p class="local-note" id="validationSaveStatus">Se guarda en la hoja dedicada de validaciones.</p>
+              <button class="primary-btn" id="saveValidationBtn" type="submit">Guardar validacion</button>
             </form>
           </section>
         </div>
@@ -297,5 +305,9 @@
   </div>
 
   <div class="toast hidden" id="toast"></div>
+  <div class="photo-modal hidden" id="photoModal" role="dialog" aria-modal="true" aria-label="Foto ampliada">
+    <button class="photo-modal-close" id="photoModalClose" type="button" aria-label="Cerrar">×</button>
+    <div class="photo-modal-body" id="photoModalBody"></div>
+  </div>
 </body>
 </html>

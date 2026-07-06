@@ -89,6 +89,20 @@ function bindControls() {
   });
 
   document.getElementById("validationForm").addEventListener("submit", saveLocalValidation);
+  document.getElementById("manualDamageInput").addEventListener("input", updateManualDamageState);
+  document.getElementById("photoModalClose").addEventListener("click", closePhotoModal);
+  document.getElementById("photoModal").addEventListener("click", (event) => {
+    if (event.target.id === "photoModal") closePhotoModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closePhotoModal();
+  });
+  document.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-photo-open]");
+    if (card) {
+      openPhotoModal(card.dataset.photoOpen, card.dataset.photoKind, card.dataset.photoLabel);
+    }
+  });
 }
 
 function showView(viewName) {
@@ -300,8 +314,9 @@ function renderDetalle(data) {
   renderItemSelector(data.items_evento || [], item.ID_Item, flow.showSelector);
   renderCurrentReject(data);
   renderControlQualityHistory(data, flow);
-  renderEsum(data.inspeccion_inicial_esum || []);
+  renderInitialEsum(data.inspeccion_inicial_esum || []);
   hydrateLocalValidation(item.ID_Item);
+  updateManualDamageState();
 }
 
 function detailFlow(data) {
@@ -320,10 +335,12 @@ function detailFlow(data) {
 function renderItemSelector(items, selectedId, showSelector) {
   const panel = document.getElementById("eventItemSelectorPanel");
   const select = document.getElementById("eventItemSelector");
+  const manual = document.getElementById("manualDamageInput");
   panel.classList.toggle("hidden", !showSelector);
   if (!showSelector) {
     select.innerHTML = "";
     select.onchange = null;
+    manual.value = "";
     return;
   }
 
@@ -357,13 +374,14 @@ function renderCurrentReject(data) {
     ? `
       <p><strong>Descripcion:</strong> ${escapeHtml(item.Descripcion_Original || "-")}</p>
       <p><strong>Responsable:</strong> ${escapeHtml(item.Responsable || "-")}</p>
+      <p><strong>Revision:</strong> ${escapeHtml(item.Revision || "-")}</p>
       <p><strong>Fecha:</strong> ${escapeHtml(item.Fecha_Item || "-")}</p>
     `
     : `
       <p><strong>Observacion completa:</strong> ${escapeHtml(event.Descripcion_Evento || item.Descripcion_Original || "-")}</p>
       <p><strong>Revisor:</strong> ${escapeHtml(item.Responsable || "-")}</p>
+      <p><strong>Revision:</strong> ${escapeHtml(item.Revision || "-")}</p>
       <p><strong>Fecha:</strong> ${escapeHtml(item.Fecha_Item || "-")}</p>
-      <p><span class="tag">Fotos de la revision completa</span></p>
     `;
 
   container.innerHTML = `
@@ -391,16 +409,16 @@ function renderHistory(targetId, items) {
 
 function renderControlQualityHistory(data, flow) {
   const panel = document.getElementById("ccHistoryPanel");
-  const esumPanel = document.getElementById("esumPanel");
+  const evidenceGrid = document.getElementById("evidenceGrid");
   panel.classList.toggle("hidden", !flow.showControlQualityHistory);
-  esumPanel.classList.toggle("span-2", !flow.showControlQualityHistory);
+  evidenceGrid.classList.toggle("cc-flow", !flow.showControlQualityHistory);
 
   if (!flow.showControlQualityHistory) {
     document.getElementById("ccHistory").innerHTML = "";
     return;
   }
 
-  renderHistory("ccHistory", data.historial_control_calidad || []);
+  renderCcHistory("ccHistory", data.historial_control_calidad || []);
 }
 
 function renderEsum(rows) {
@@ -421,6 +439,51 @@ function renderEsum(rows) {
   `).join("");
 }
 
+function renderCcHistory(targetId, items) {
+  const target = document.getElementById(targetId);
+  if (!items.length) {
+    target.innerHTML = `<div class="history-card">Sin fotos de Control Calidad para este VIN.</div>`;
+    return;
+  }
+
+  target.innerHTML = items.map((item) => `
+    <article class="history-card">
+      <strong>${escapeHtml(item.Revision || item.Fuente || "-")}</strong>
+      <p>${escapeHtml(item.Descripcion_Original || "-")}</p>
+      <p><strong>Responsable:</strong> ${escapeHtml(item.Responsable || "-")}</p>
+      <p><strong>Fecha:</strong> ${escapeHtml(item.Fecha_Item || "-")}</p>
+      <p>${escapeHtml(display(item.Causa_Sugerida))} - ${escapeHtml(display(item.Confianza_Sugerida))}</p>
+      ${renderPhotos(controlQualityPhotosForItem(item))}
+    </article>
+  `).join("");
+}
+
+function renderInitialEsum(rows) {
+  const target = document.getElementById("esumHistory");
+  if (!rows.length) {
+    target.innerHTML = `<div class="history-card">Sin evidencias eSUM para este VIN.</div>`;
+    return;
+  }
+
+  target.innerHTML = rows.map((row) => `
+    <article class="history-card">
+      <strong>${escapeHtml(row.Seccion || "-")} <span class="tag">${escapeHtml(row.Validacion || "-")}</span></strong>
+      <p><strong>Diagnostico:</strong> ${escapeHtml(row.Diag_eSUM || "-")}</p>
+      <p><strong>Comentario:</strong> ${escapeHtml(row.Comentario || "-")}</p>
+      <p><strong>Colaborador:</strong> ${escapeHtml(row.Colaborador || "-")}</p>
+      <p><strong>Fecha:</strong> ${escapeHtml(row.Fecha_Hora || "-")}</p>
+      ${renderPhotos(row.Fotos || [])}
+    </article>
+  `).join("");
+}
+
+function controlQualityPhotosForItem(item) {
+  return (item._foto_refs || []).map((ref, index) => {
+    const label = index === 0 ? "Evidencia inicial del dano" : "Evidencia despues del reproceso";
+    return controlQualityPhoto(ref, label);
+  });
+}
+
 function renderPhotos(photos) {
   if (!photos || !photos.length) return `<div class="media-grid"></div>`;
 
@@ -432,42 +495,41 @@ function renderPhotos(photos) {
         const thumbnailUrl = photo.Url || imageUrl(photo.Original || "");
         const frameUrl = endpointUrl || photo.Preview_Url || drivePreviewUrl(photo.Url || photo.Abrir_Foto || photo.Original || "");
         const openUrl = rawOpenUrl || thumbnailUrl || frameUrl || "#";
+        const label = photo.Etiqueta || "Foto";
+        const showCaption = shouldShowPhotoCaption(label);
+        const modalUrl = frameUrl || thumbnailUrl || openUrl;
+        const modalKind = frameUrl ? "frame" : "image";
 
         if (frameUrl) {
           return `
-            <div class="media-card">
-              <iframe src="${escapeHtml(frameUrl)}" title="${escapeHtml(photo.Etiqueta || "Foto")}" loading="lazy" referrerpolicy="no-referrer"></iframe>
-              <div>
-                <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
-                <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
-              </div>
-            </div>
+            <button class="media-card media-button" type="button" data-photo-open="${escapeHtml(modalUrl)}" data-photo-kind="${escapeHtml(modalKind)}" data-photo-label="${escapeHtml(label)}">
+              <iframe src="${escapeHtml(frameUrl)}" title="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+              ${showCaption ? `<span class="media-caption"><strong>${escapeHtml(label)}</strong></span>` : ""}
+            </button>
           `;
         }
 
         if (!thumbnailUrl) {
           return `
-            <div class="media-card no-preview">
-              <div>
-                <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
-                <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
-              </div>
-            </div>
+            <button class="media-card media-button no-preview" type="button" data-photo-open="${escapeHtml(openUrl)}" data-photo-kind="frame" data-photo-label="${escapeHtml(label)}">
+              ${showCaption ? `<span class="media-caption"><strong>${escapeHtml(label)}</strong></span>` : ""}
+            </button>
           `;
         }
 
         return `
-          <div class="media-card">
-            <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(photo.Etiqueta || "Foto")}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media-card').classList.add('image-error'); this.remove();">
-            <div>
-              <strong>${escapeHtml(photo.Etiqueta || "Foto")}</strong><br>
-              <a href="${escapeHtml(openUrl)}" target="_blank" rel="noopener">Abrir foto</a>
-            </div>
-          </div>
+          <button class="media-card media-button" type="button" data-photo-open="${escapeHtml(modalUrl)}" data-photo-kind="${escapeHtml(modalKind)}" data-photo-label="${escapeHtml(label)}">
+            <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(label)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.closest('.media-card').classList.add('image-error'); this.remove();">
+            ${showCaption ? `<span class="media-caption"><strong>${escapeHtml(label)}</strong></span>` : ""}
+          </button>
         `;
       }).join("")}
     </div>
   `;
+}
+
+function shouldShowPhotoCaption(label) {
+  return !/^fotos de la revision completa$/i.test(String(label || "").trim());
 }
 
 function controlQualityPhoto(ref, label) {
@@ -572,33 +634,107 @@ function renderInfo(targetId, data) {
   `).join("");
 }
 
-function saveLocalValidation(event) {
+async function saveLocalValidation(event) {
   event.preventDefault();
   const item = state.detail && state.detail.item_seleccionado;
   if (!item) return;
 
+  const button = document.getElementById("saveValidationBtn");
+  const status = document.getElementById("validationSaveStatus");
   const formData = new FormData(event.currentTarget);
   const payload = Object.fromEntries(formData.entries());
+  const manualDamage = document.getElementById("manualDamageInput").value.trim();
+  const finalDamage = manualDamage || selectedDamageText();
+
   payload.ID_Item = item.ID_Item;
+  payload.ID_Evento = item.ID_Evento;
   payload.VIN = item.VIN;
+  payload.Origen_Rechazo = item.Origen_Rechazo;
+  payload.Fuente = item.Fuente;
+  payload.Revision = item.Revision;
+  payload.Descripcion_Item = item.Descripcion_Original;
+  payload.Dano_Validado = finalDamage;
+  payload.Dano_Manual = manualDamage;
+  payload.Causa_Sugerida = item.Causa_Sugerida;
+  payload.Subcausa_Sugerida = item.Subcausa_Sugerida;
+  payload.Confianza_Sugerida = item.Confianza_Sugerida;
+  payload.Responsable_Item = item.Responsable || "";
+  payload.Fecha_Item = item.Fecha_Item || "";
   payload.guardado_el = new Date().toISOString();
   localStorage.setItem(`cr_validation_${item.ID_Item}`, JSON.stringify(payload));
-  toast("Validacion local guardada en este navegador.");
+
+  try {
+    button.disabled = true;
+    status.textContent = "Guardando validacion...";
+    const response = await jsonpRequest("guardar_validacion", payload);
+    if (!response.ok) throw new Error(response.error || "No se pudo guardar la validacion");
+    status.textContent = `Guardado en hoja de validaciones, fila ${response.row}.`;
+    toast("Validacion guardada en Excel/Sheets.");
+  } catch (error) {
+    status.textContent = "No se pudo guardar en la hoja. Quedo respaldo local en este navegador.";
+    toast(error.message);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function hydrateLocalValidation(idItem) {
   const raw = localStorage.getItem(`cr_validation_${idItem}`);
   const form = document.getElementById("validationForm");
+  const manual = document.getElementById("manualDamageInput");
+  const status = document.getElementById("validationSaveStatus");
   form.reset();
+  manual.value = "";
+  status.textContent = "Se guarda en la hoja dedicada de validaciones.";
   if (!raw) return;
   try {
     const saved = JSON.parse(raw);
     Object.entries(saved).forEach(([key, value]) => {
       if (form.elements[key]) form.elements[key].value = value;
     });
+    manual.value = saved.Dano_Manual || saved.dano_manual || "";
   } catch (error) {
     console.warn(error);
   }
+}
+
+function selectedDamageText() {
+  const manual = document.getElementById("manualDamageInput").value.trim();
+  if (manual) return manual;
+
+  const select = document.getElementById("eventItemSelector");
+  if (select && select.value && select.options.length) {
+    return select.options[select.selectedIndex].textContent.replace(/^\d+\.\s*/, "").trim();
+  }
+
+  const item = state.detail && state.detail.item_seleccionado;
+  return item ? (item.Descripcion_Original || item.Texto_Normalizado || "") : "";
+}
+
+function updateManualDamageState() {
+  const manual = document.getElementById("manualDamageInput");
+  if (!manual) return;
+  manual.classList.toggle("has-value", Boolean(manual.value.trim()));
+}
+
+function openPhotoModal(url, kind, label) {
+  if (!url || url === "#") return;
+  const modal = document.getElementById("photoModal");
+  const body = document.getElementById("photoModalBody");
+  const safeUrl = escapeHtml(url);
+  const safeLabel = escapeHtml(label || "Foto");
+  body.innerHTML = kind === "image"
+    ? `<img src="${safeUrl}" alt="${safeLabel}">`
+    : `<iframe src="${safeUrl}" title="${safeLabel}" referrerpolicy="no-referrer"></iframe>`;
+  modal.classList.remove("hidden");
+}
+
+function closePhotoModal() {
+  const modal = document.getElementById("photoModal");
+  const body = document.getElementById("photoModalBody");
+  if (!modal || modal.classList.contains("hidden")) return;
+  modal.classList.add("hidden");
+  body.innerHTML = "";
 }
 
 function imageUrl(value) {
