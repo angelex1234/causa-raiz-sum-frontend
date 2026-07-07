@@ -153,6 +153,8 @@
             </select>
           </label>
           <button class="secondary-btn" id="applyFiltersBtn" type="button">Filtrar</button>
+          <button class="secondary-btn mode-btn" id="causeRootModeBtn" type="button">Modo causa raiz</button>
+          <button class="secondary-btn mode-btn" id="costReviewModeBtn" type="button">Modo costos</button>
         </div>
 
         <div class="status-row">
@@ -370,6 +372,57 @@
             <div id="fuenteTable"></div>
           </article>
         </div>
+
+        <section class="detail-panel audit-panel">
+          <div class="section-heading">
+            <div>
+              <h3>Auditoria de causa raiz sugerida</h3>
+              <p class="local-note">Listas por fuente y muestras aleatorias para validar si el sistema esta clasificando bien.</p>
+            </div>
+            <span class="tag" id="auditStatusTag">Pendiente cargar</span>
+          </div>
+
+          <div class="filter-bar audit-filter-bar">
+            <label>Fuente
+              <select id="auditSourceFilter">
+                <option value="TODOS">Todas</option>
+                <option value="CONTROL_CALIDAD">Control Calidad</option>
+                <option value="VARI">VARI</option>
+                <option value="REVO">REVO</option>
+              </select>
+            </label>
+            <label>Subcausa para listar VINs
+              <select id="auditSubcauseFocus">
+                <option value="SIN_COINCIDENCIA">Sin coincidencia</option>
+                <option value="DANO_NO_IDENTIFICADO">Dano no identificado</option>
+                <option value="DANO_NO_SUBSANADO">Dano no subsanado</option>
+                <option value="ABOLLADURA_RECIENTE">Abolladura reciente</option>
+                <option value="RAYON_RECIENTE">Rayon reciente</option>
+                <option value="LIMPIEZA_INCOMPLETA">Limpieza incompleta</option>
+                <option value="CRITERIO_NO_ALINEADO">Criterio no alineado</option>
+                <option value="OBSERVACION_AMBIGUA">Observacion ambigua</option>
+                <option value="FALLA_ACABADO">Falla de acabado</option>
+                <option value="SIN_EVIDENCIA">Sin evidencia</option>
+              </select>
+            </label>
+            <button class="secondary-btn" id="loadAuditBtn" type="button">Cargar auditoria</button>
+            <button class="primary-btn" id="downloadAuditBtn" type="button">Descargar Excel auditoria</button>
+          </div>
+
+          <div class="audit-source-grid" id="auditSourceGrid">
+            <div class="empty-state">Carga la auditoria para ver Control Calidad, VARI y REVO separados.</div>
+          </div>
+        </section>
+
+        <section class="detail-panel audit-panel">
+          <div class="section-heading">
+            <h3>5 VINs aleatorios por causa raiz</h3>
+            <span class="tag">Muestra para revision del jefe</span>
+          </div>
+          <div id="auditCauseSamples" class="audit-sample-grid">
+            <div class="empty-state">Sin muestras cargadas.</div>
+          </div>
+        </section>
       </section>
 
       <section class="view" id="costosView">
@@ -449,14 +502,42 @@
             <article class="kpi-card"><span>Horas reproceso</span><strong id="comparisonKpiReprocessHours">-</strong></article>
             <article class="kpi-card"><span>VINs con reproceso</span><strong id="comparisonKpiReprocessVins">-</strong></article>
           </div>
-          <div class="chart-grid">
-            <article class="chart-panel">
+          <div class="comparison-grid">
+            <article class="chart-panel comparison-conclusions-panel">
               <h3>Conclusiones</h3>
               <div id="comparisonConclusions" class="stack">Sin datos cargados.</div>
             </article>
-            <article class="chart-panel">
+            <article class="chart-panel comparison-top-panel">
               <h3>Top VINs por sobrecosto</h3>
               <div id="comparisonTopOvercostTable">Sin datos cargados.</div>
+            </article>
+          </div>
+        </section>
+
+        <section class="detail-panel auto-reprocess-panel">
+          <div class="section-heading">
+            <div>
+              <h3>Estimacion automatica de reprocesos por texto</h3>
+              <p class="local-note">Calcula una referencia rapida usando palabras clave de todos los rechazos. No reemplaza la validacion manual.</p>
+            </div>
+            <button class="secondary-btn" id="loadAutoReprocessEstimateBtn" type="button">Estimar todos los reprocesos</button>
+          </div>
+          <div class="kpi-grid auto-estimate-kpis">
+            <article class="kpi-card"><span>Items evaluados</span><strong id="autoEstimateKpiItems">-</strong></article>
+            <article class="kpi-card warning"><span>Costo estimado</span><strong id="autoEstimateKpiCost">-</strong></article>
+            <article class="kpi-card"><span>Horas estimadas</span><strong id="autoEstimateKpiHours">-</strong></article>
+            <article class="kpi-card"><span>Items con codigo</span><strong id="autoEstimateKpiCoded">-</strong></article>
+            <article class="kpi-card"><span>No seguros / N/A</span><strong id="autoEstimateKpiUncertain">-</strong></article>
+            <article class="kpi-card"><span>VINs con costo</span><strong id="autoEstimateKpiVins">-</strong></article>
+          </div>
+          <div class="comparison-grid">
+            <article class="chart-panel comparison-top-panel">
+              <h3>Top VINs estimados por reproceso</h3>
+              <div id="autoEstimateTopTable">Presiona estimar para calcular.</div>
+            </article>
+            <article class="chart-panel comparison-conclusions-panel">
+              <h3>Lectura rapida</h3>
+              <div id="autoEstimateNotes" class="stack"><div class="history-card">Este modulo usa reglas automaticas: quiñe = P02A, rayón = P01/P02B/P02C, abolladura = P03, abolladura + rayón = P04, grave/planchado = P05.</div></div>
             </article>
           </div>
         </section>
@@ -609,6 +690,13 @@
   </div>
 
   <div class="toast hidden" id="toast"></div>
+  <div class="loading-indicator hidden" id="loadingIndicator">
+    <span class="spinner" aria-hidden="true"></span>
+    <div>
+      <strong id="loadingTitle">Cargando...</strong>
+      <small id="loadingSubtitle">Consultando Apps Script</small>
+    </div>
+  </div>
   <div class="photo-modal hidden" id="photoModal" role="dialog" aria-modal="true" aria-label="Foto ampliada">
     <button class="photo-modal-close" id="photoModalClose" type="button" aria-label="Cerrar">×</button>
     <div class="photo-modal-body" id="photoModalBody"></div>
