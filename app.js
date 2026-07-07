@@ -7,6 +7,9 @@ const state = {
   rechazoEstado: "PENDIENTE",
   detail: null,
   detailCache: {},
+  costos: null,
+  validado3d: null,
+  vehicleScene: null,
   charts: {},
 };
 
@@ -25,6 +28,7 @@ const labels = {
 };
 
 const palette = ["#1f7ae0", "#22c55e", "#f4c430", "#ef4444", "#38bdf8", "#0b1f3a", "#8b5cf6", "#f97316"];
+let chartJsPromise = null;
 
 const finalSubcauses = {
   NUEVO_DANO: ["RAYON_RECIENTE", "ABOLLADURA_RECIENTE", "ARANONES", "PORTAZO_MOVILIZACION", "DANO_ZAPATO", "DANO_NO_IDENTIFICADO"],
@@ -48,10 +52,10 @@ const workCatalog = {
 };
 
 const laborCost = {
-  PINTOR: { salary: 2000 },
-  DESABOLLADOR: { salary: 4000 },
-  MIXTO: { salary: 3000 },
-  NO_APLICA: { salary: 0 },
+  PINTOR: { costHour: 42 },
+  DESABOLLADOR: { costHour: 45 },
+  MIXTO: { costHour: 43.5 },
+  NO_APLICA: { costHour: 0 },
 };
 
 const laborParams = {
@@ -114,13 +118,22 @@ function bindNavigation() {
 
 function bindControls() {
   document.getElementById("refreshBtn").addEventListener("click", () => {
+    const activeView = getActiveView();
     loadDashboard();
-    if (getActiveView() === "rechazos") {
+    if (activeView === "rechazos") {
       loadRechazos();
+    }
+    if (activeView === "costos") {
+      loadCostDashboard();
+    }
+    if (activeView === "validado3d") {
+      loadValidated3dDashboard();
     }
   });
 
   document.getElementById("applyFiltersBtn").addEventListener("click", loadRechazos);
+  document.getElementById("applyCostFiltersBtn").addEventListener("click", loadCostDashboard);
+  document.getElementById("applyValidated3dFiltersBtn").addEventListener("click", loadValidated3dDashboard);
   document.getElementById("searchInput").addEventListener("keydown", (event) => {
     if (event.key === "Enter") loadRechazos();
   });
@@ -166,12 +179,16 @@ function showView(viewName) {
     rechazos: ["Rechazos pendientes", "Lista completa con scroll propio y filtros."],
     detalle: ["Detalle / Validacion", "Analisis manual con evidencia e historial por VIN."],
     kpis: ["KPIs sugeridos", "Distribuciones calculadas por el sistema."],
+    costos: ["Analisis de costos", "Costos operativos estimados desde eSUM inicial."],
+    validado3d: ["Mapa 3D validado", "Causas validadas manualmente ubicadas por zona."],
   };
   document.getElementById("pageTitle").textContent = titles[viewName][0];
   document.getElementById("pageSubtitle").textContent = titles[viewName][1];
 
   if (viewName === "rechazos") loadRechazos();
   if (viewName === "kpis" && state.dashboard) renderKpiTables(state.dashboard);
+  if (viewName === "costos") loadCostDashboard();
+  if (viewName === "validado3d") loadValidated3dDashboard();
 }
 
 function getActiveView() {
@@ -220,6 +237,89 @@ function renderDashboard(data) {
   renderDoughnut("subcausasChart", data.subcausas_sugeridas, "subcausa", { legendPosition: "right", cutout: "58%" });
   renderDoughnut("origenChart", data.origen_rechazo, "origen", { legendPosition: "bottom", cutout: "60%" });
   renderDoughnut("fuenteChart", data.fuente_rechazo, "fuente", { legendPosition: "right", cutout: "60%" });
+}
+
+async function loadCostDashboard() {
+  try {
+    setBusy(true);
+    const payload = await jsonpRequest("dashboard_costos", {
+      dias: document.getElementById("daysSelect").value,
+      codigo: document.getElementById("costCodeFilter").value,
+      rol: document.getElementById("costRoleFilter").value,
+      tipoTrabajo: document.getElementById("costTypeFilter").value,
+      marca: document.getElementById("costBrandFilter").value.trim(),
+      modelo: document.getElementById("costModelFilter").value.trim(),
+    });
+    if (!payload.ok) throw new Error(payload.error || "No se pudo cargar analisis de costos");
+    state.costos = payload;
+    renderCostDashboard(payload);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderCostDashboard(data) {
+  setText("costKpiRegistros", data.total_registros);
+  setText("costKpiVins", data.total_vins);
+  setText("costKpiCosto", money(data.total_costo_estimado));
+  setText("costKpiHoras", round(data.total_horas_estimadas, 2));
+  setText("costKpiPanos", round(data.total_panos_estimados, 2));
+  setText("costKpiCodigo", data.codigo_mas_costoso || "-");
+
+  renderDoughnut("costCodeChart", data.por_codigo || [], "codigo", { legendPosition: "right", cutout: "58%" });
+  renderBarChart("costRoleChart", data.por_rol || [], "rol", "horas_estimadas", { label: "Horas", horizontal: true });
+  renderBarChart("costDayChart", data.por_dia || [], "fecha", "costo_estimado", { label: "Costo S/" });
+  renderMetricTable("costVinCostTable", data.top_vins_costo || [], [
+    ["VIN", "vin"],
+    ["Costo", "costo_estimado", money],
+    ["Horas", "horas_estimadas"],
+    ["Trabajos", "cantidad"],
+  ]);
+  renderCostDetail(data.detalle_tabla || []);
+}
+
+async function loadValidated3dDashboard() {
+  try {
+    setBusy(true);
+    const payload = await jsonpRequest("dashboard_validado_3d", {
+      dias: document.getElementById("daysSelect").value,
+      causa: document.getElementById("validCauseFilter").value,
+      subcausa: document.getElementById("validSubcauseFilter").value.trim(),
+      zona: document.getElementById("validZoneFilter").value.trim(),
+      marca: document.getElementById("validBrandFilter").value.trim(),
+      modelo: document.getElementById("validModelFilter").value.trim(),
+    });
+    if (!payload.ok) throw new Error(payload.error || "No se pudo cargar dashboard validado 3D");
+    state.validado3d = payload;
+    renderValidated3dDashboard(payload);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderValidated3dDashboard(data) {
+  setText("validKpiTotal", data.total_validaciones);
+  setText("validKpiVins", data.total_vins);
+  setText("validKpiCausa", display(data.causa_principal));
+  setText("validKpiSubcausa", display(data.subcausa_principal));
+  setText("validKpiZona", zoneName(data.zona_mas_afectada, data.zonas_3d));
+  setText("validKpiModelo", data.modelo_visualizado || "JETOUR X70");
+  setText("vehicleModelTag", data.modelo_visualizado || "JETOUR X70");
+
+  renderDoughnut("validCauseChart", data.por_causa_validada || [], "causa", { legendPosition: "right", cutout: "58%" });
+  renderDoughnut("validSubcauseChart", data.por_subcausa_validada || [], "subcausa", { legendPosition: "right", cutout: "58%" });
+  renderMetricTable("validZoneTable", data.top_zonas || [], [
+    ["Zona", "nombre"],
+    ["Cantidad", "cantidad"],
+    ["%", "porcentaje", (value) => `${round(value, 2)}%`],
+    ["Causa", "causa_principal", display],
+  ]);
+  renderValidatedDetail(data.ultimas_validaciones || []);
+  renderVehicle3d(data.zonas_3d || []);
 }
 
 async function loadRechazos() {
@@ -619,9 +719,39 @@ function fileNameFromPath(value) {
   return parts[parts.length - 1] || raw;
 }
 
+function ensureChartJs() {
+  if (window.Chart) return Promise.resolve(true);
+  if (chartJsPromise) return chartJsPromise;
+
+  chartJsPromise = new Promise((resolve) => {
+    const script = document.createElement("script");
+    let settled = false;
+    const finish = (ready) => {
+      if (settled) return;
+      settled = true;
+      resolve(Boolean(ready && window.Chart));
+    };
+    script.src = "./vendor/chart.umd.min.js";
+    script.async = true;
+    script.dataset.chartLoader = "retry";
+    script.onload = () => finish(true);
+    script.onerror = () => finish(false);
+    window.setTimeout(() => finish(Boolean(window.Chart)), 12000);
+    document.head.appendChild(script);
+  });
+
+  return chartJsPromise;
+}
+
 function renderDoughnut(canvasId, rows, keyField, config = {}) {
   const ctx = document.getElementById(canvasId);
-  if (!ctx || !window.Chart) return;
+  if (!ctx) return;
+  if (!window.Chart) {
+    ensureChartJs().then((ready) => {
+      if (ready) renderDoughnut(canvasId, rows, keyField, config);
+    });
+    return;
+  }
   if (state.charts[canvasId]) state.charts[canvasId].destroy();
 
   const labelsForChart = (rows || []).map((row) => display(row.nombre || row[keyField]));
@@ -690,6 +820,377 @@ function renderDistributionTable(targetId, rows, keyField) {
       </tbody>
     </table>
   `;
+}
+
+function renderBarChart(canvasId, rows, keyField, valueField, config = {}) {
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  if (!window.Chart) {
+    ensureChartJs().then((ready) => {
+      if (ready) renderBarChart(canvasId, rows, keyField, valueField, config);
+    });
+    return;
+  }
+  if (state.charts[canvasId]) state.charts[canvasId].destroy();
+
+  const labelsForChart = (rows || []).map((row) => display(row.nombre || row[keyField]));
+  const values = (rows || []).map((row) => Number(row[valueField] || 0));
+
+  state.charts[canvasId] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labelsForChart,
+      datasets: [{
+        label: config.label || "Valor",
+        data: values,
+        backgroundColor: palette,
+        borderRadius: 8,
+      }],
+    },
+    options: {
+      indexAxis: config.horizontal ? "y" : "x",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+      },
+      scales: {
+        x: { beginAtZero: true, ticks: { color: "#526070" }, grid: { color: "#edf2f7" } },
+        y: { beginAtZero: true, ticks: { color: "#526070" }, grid: { color: "#edf2f7" } },
+      },
+    },
+  });
+}
+
+function renderMetricTable(targetId, rows, columns) {
+  const target = document.getElementById(targetId);
+  if (!target) return;
+  if (!rows.length) {
+    target.innerHTML = `<p>Sin datos.</p>`;
+    return;
+  }
+
+  target.innerHTML = `
+    <table class="mini-table metric-table">
+      <thead>
+        <tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${rows.map((row) => `
+          <tr>
+            ${columns.map(([, field, formatter]) => {
+              const raw = row[field];
+              const value = formatter ? formatter(raw, row) : raw;
+              return `<td>${escapeHtml(value ?? "-")}</td>`;
+            }).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderCostDetail(rows) {
+  const target = document.getElementById("costDetailBody");
+  if (!target) return;
+  if (!rows.length) {
+    target.innerHTML = `<tr><td colspan="9">Sin registros eSUM para los filtros seleccionados.</td></tr>`;
+    return;
+  }
+
+  target.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.Fecha || "-")}</td>
+      <td><strong>${escapeHtml(row.VIN || "-")}</strong></td>
+      <td>${escapeHtml([row.Marca, row.Modelo].filter(Boolean).join(" / ") || "-")}</td>
+      <td class="description-cell">${escapeHtml(row.Diagnostico_eSUM || row.Comentario || "-")}</td>
+      <td><span class="tag">${escapeHtml(row.Codigo_Trabajo || "-")}</span></td>
+      <td>${escapeHtml(row.Rol_Mano_Obra || "-")}</td>
+      <td>${escapeHtml(round(row.Tiempo_Estimado_Horas, 2))}</td>
+      <td>${escapeHtml(money(row.Costo_Mano_Obra_Estimado))}</td>
+      <td>${escapeHtml(row.Operario || "-")}</td>
+    </tr>
+  `).join("");
+}
+
+function renderValidatedDetail(rows) {
+  const target = document.getElementById("validDetailBody");
+  if (!target) return;
+  if (!rows.length) {
+    target.innerHTML = `<tr><td colspan="8">Sin validaciones manuales para los filtros seleccionados.</td></tr>`;
+    return;
+  }
+
+  target.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.Fecha_Validacion || "-")}</td>
+      <td><strong>${escapeHtml(row.VIN || "-")}</strong></td>
+      <td>${escapeHtml(row.Revision || row.Fuente || "-")}</td>
+      <td class="description-cell">${escapeHtml(row.Dano_Validado || row.Descripcion_Item || "-")}</td>
+      <td>${escapeHtml(display(row.Causa_Final_Validada))}</td>
+      <td>${escapeHtml(display(row.Subcausa_Final_Validada))}</td>
+      <td>${escapeHtml(row.Zona_3D_Nombre || row.Zona_3D || "-")}</td>
+      <td>${escapeHtml(row.Analista || "-")}</td>
+    </tr>
+  `).join("");
+}
+
+async function renderVehicle3d(zonas) {
+  const canvas = document.getElementById("vehicle3dCanvas");
+  const fallback = document.getElementById("vehicle3dFallback");
+  if (!canvas || !fallback) return;
+
+  disposeVehicleScene();
+  const zoneMap = new Map((zonas || []).map((zone) => [zone.zona_id, zone]));
+  renderZoneDetail(null);
+
+  try {
+    const THREE = await import("./vendor/three.module.js");
+    const controlsModule = await import("./vendor/OrbitControls.js");
+    fallback.classList.add("hidden");
+    canvas.classList.remove("hidden");
+    initVehicleScene(THREE, controlsModule.OrbitControls, canvas, zoneMap);
+  } catch (error) {
+    canvas.classList.add("hidden");
+    fallback.classList.remove("hidden");
+    renderVehicleFallback(fallback, zonas || []);
+  }
+}
+
+function initVehicleScene(THREE, OrbitControls, canvas, zoneMap) {
+  const stage = document.getElementById("vehicle3dStage");
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf8fbff);
+
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+  camera.position.set(4.6, 3.2, 6.2);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.target.set(0, 0.45, 0);
+  controls.maxDistance = 11;
+  controls.minDistance = 3.5;
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 2.4));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
+  keyLight.position.set(4, 6, 5);
+  keyLight.castShadow = true;
+  scene.add(keyLight);
+
+  addVehicleBase(THREE, scene);
+  const zoneMeshes = addVehicleZones(THREE, scene, zoneMap);
+
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  const onClick = (event) => {
+    const rect = canvas.getBoundingClientRect();
+    pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(zoneMeshes, false);
+    if (hits.length) {
+      renderZoneDetail(hits[0].object.userData.zone);
+    }
+  };
+  canvas.addEventListener("click", onClick);
+
+  const resize = () => {
+    const width = Math.max(320, stage.clientWidth || 760);
+    const height = Math.max(360, stage.clientHeight || 520);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+  };
+  const observer = new ResizeObserver(resize);
+  observer.observe(stage);
+  resize();
+
+  let active = true;
+  const animate = () => {
+    if (!active) return;
+    controls.update();
+    renderer.render(scene, camera);
+    requestAnimationFrame(animate);
+  };
+  animate();
+
+  state.vehicleScene = {
+    dispose() {
+      active = false;
+      observer.disconnect();
+      canvas.removeEventListener("click", onClick);
+      controls.dispose();
+      scene.traverse((object) => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+          if (Array.isArray(object.material)) object.material.forEach((material) => material.dispose());
+          else object.material.dispose();
+        }
+      });
+      renderer.dispose();
+    },
+  };
+}
+
+function addVehicleBase(THREE, scene) {
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xd7e3ee, roughness: 0.62, metalness: 0.08 });
+  const glassMaterial = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.25, metalness: 0.25 });
+  const darkMaterial = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5 });
+
+  addBox(THREE, scene, bodyMaterial, [0, 0.42, 0], [2.45, 0.65, 4.3]);
+  addBox(THREE, scene, glassMaterial, [0, 0.95, -0.15], [1.75, 0.58, 2.1]);
+  addBox(THREE, scene, bodyMaterial, [0, 0.34, -2.35], [2.2, 0.5, 0.42]);
+  addBox(THREE, scene, bodyMaterial, [0, 0.34, 2.35], [2.2, 0.5, 0.42]);
+
+  [
+    [-1.25, 0.05, -1.55],
+    [1.25, 0.05, -1.55],
+    [-1.25, 0.05, 1.55],
+    [1.25, 0.05, 1.55],
+  ].forEach((position) => {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 0.24, 32), darkMaterial);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(position[0], position[1], position[2]);
+    scene.add(wheel);
+  });
+}
+
+function addVehicleZones(THREE, scene, zoneMap) {
+  const meshes = [];
+  vehicleZoneDefinitions().forEach((def) => {
+    const data = zoneMap.get(def.id) || {
+      zona_id: def.id,
+      nombre: def.name,
+      cantidad: 0,
+      porcentaje: 0,
+      causa_principal: "",
+      subcausa_principal: "",
+      color_level: "gris",
+      causas: [],
+      subcausas: [],
+      vins_recientes: [],
+    };
+    const material = new THREE.MeshStandardMaterial({
+      color: zoneColor(data.color_level),
+      transparent: true,
+      opacity: data.cantidad ? 0.9 : 0.2,
+      roughness: 0.48,
+      metalness: 0.04,
+    });
+    const mesh = addBox(THREE, scene, material, def.position, def.scale);
+    mesh.userData.zone = { ...data, nombre: data.nombre || def.name };
+    meshes.push(mesh);
+  });
+  return meshes;
+}
+
+function addBox(THREE, scene, material, position, scale) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(scale[0], scale[1], scale[2]), material);
+  mesh.position.set(position[0], position[1], position[2]);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return mesh;
+}
+
+function renderVehicleFallback(target, zonas) {
+  const rows = zonas.length ? zonas : vehicleZoneDefinitions().map((def) => ({
+    zona_id: def.id,
+    nombre: def.name,
+    cantidad: 0,
+    porcentaje: 0,
+    color_level: "gris",
+  }));
+  target.innerHTML = rows.map((zone) => `
+    <button class="zone-chip zone-${escapeHtml(zone.color_level || "gris")}" type="button" data-zone="${escapeHtml(zone.zona_id)}">
+      <strong>${escapeHtml(zone.nombre || zone.zona_id)}</strong>
+      <span>${escapeHtml(zone.cantidad || 0)}</span>
+    </button>
+  `).join("");
+  target.querySelectorAll("[data-zone]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const zone = rows.find((row) => row.zona_id === button.dataset.zone);
+      renderZoneDetail(zone);
+    });
+  });
+}
+
+function renderZoneDetail(zone) {
+  const target = document.getElementById("zoneDetail");
+  if (!target) return;
+  if (!zone) {
+    target.innerHTML = `<strong>Zona seleccionada</strong><p>Sin zona seleccionada.</p>`;
+    return;
+  }
+
+  target.innerHTML = `
+    <strong>${escapeHtml(zone.nombre || zone.zona_id || "Zona")}</strong>
+    <div class="zone-stats">
+      <span>Casos</span><b>${escapeHtml(zone.cantidad || 0)}</b>
+      <span>Porcentaje</span><b>${escapeHtml(round(zone.porcentaje, 2))}%</b>
+      <span>Causa</span><b>${escapeHtml(display(zone.causa_principal))}</b>
+      <span>Subcausa</span><b>${escapeHtml(display(zone.subcausa_principal))}</b>
+    </div>
+    <p>${escapeHtml((zone.vins_recientes || []).slice(0, 6).join(", ") || "Sin VINs recientes.")}</p>
+  `;
+}
+
+function disposeVehicleScene() {
+  if (state.vehicleScene && typeof state.vehicleScene.dispose === "function") {
+    state.vehicleScene.dispose();
+  }
+  state.vehicleScene = null;
+}
+
+function vehicleZoneDefinitions() {
+  return [
+    { id: "hood", name: "Capot", position: [0, 0.83, -1.82], scale: [1.7, 0.08, 0.9] },
+    { id: "roof", name: "Techo", position: [0, 1.32, -0.15], scale: [1.55, 0.08, 1.1] },
+    { id: "trunk", name: "Maletera", position: [0, 0.82, 1.88], scale: [1.7, 0.08, 0.82] },
+    { id: "front_bumper", name: "Parachoque delantero", position: [0, 0.48, -2.58], scale: [2.0, 0.16, 0.18] },
+    { id: "rear_bumper", name: "Parachoque posterior", position: [0, 0.48, 2.58], scale: [2.0, 0.16, 0.18] },
+    { id: "front_left_door", name: "Puerta delantera izquierda", position: [-1.24, 0.58, -0.75], scale: [0.08, 0.58, 0.92] },
+    { id: "rear_left_door", name: "Puerta posterior izquierda", position: [-1.24, 0.58, 0.42], scale: [0.08, 0.58, 0.92] },
+    { id: "front_right_door", name: "Puerta delantera derecha", position: [1.24, 0.58, -0.75], scale: [0.08, 0.58, 0.92] },
+    { id: "rear_right_door", name: "Puerta posterior derecha", position: [1.24, 0.58, 0.42], scale: [0.08, 0.58, 0.92] },
+    { id: "front_left_fender", name: "Guardafango delantero izquierdo", position: [-1.25, 0.56, -1.75], scale: [0.08, 0.48, 0.62] },
+    { id: "front_right_fender", name: "Guardafango delantero derecho", position: [1.25, 0.56, -1.75], scale: [0.08, 0.48, 0.62] },
+    { id: "rear_left_fender", name: "Guardafango posterior izquierdo", position: [-1.25, 0.56, 1.5], scale: [0.08, 0.48, 0.62] },
+    { id: "rear_right_fender", name: "Guardafango posterior derecho", position: [1.25, 0.56, 1.5], scale: [0.08, 0.48, 0.62] },
+    { id: "left_side_skirt", name: "Estribo izquierdo", position: [-1.24, 0.2, -0.15], scale: [0.08, 0.16, 2.65] },
+    { id: "right_side_skirt", name: "Estribo derecho", position: [1.24, 0.2, -0.15], scale: [0.08, 0.16, 2.65] },
+    { id: "left_body", name: "Carroceria izquierda", position: [-1.28, 0.82, 0.98], scale: [0.08, 0.46, 0.8] },
+    { id: "right_body", name: "Carroceria derecha", position: [1.28, 0.82, 0.98], scale: [0.08, 0.46, 0.8] },
+    { id: "body_general", name: "Carroceria general", position: [0, 0.88, 0.86], scale: [1.4, 0.08, 0.74] },
+    { id: "left_mirror", name: "Espejo izquierdo", position: [-1.38, 0.92, -1.12], scale: [0.12, 0.18, 0.24] },
+    { id: "right_mirror", name: "Espejo derecho", position: [1.38, 0.92, -1.12], scale: [0.12, 0.18, 0.24] },
+    { id: "front_left_wheel", name: "Aro/llanta delantera izquierda", position: [-1.28, 0.08, -1.55], scale: [0.12, 0.52, 0.52] },
+    { id: "front_right_wheel", name: "Aro/llanta delantera derecha", position: [1.28, 0.08, -1.55], scale: [0.12, 0.52, 0.52] },
+    { id: "rear_left_wheel", name: "Aro/llanta posterior izquierda", position: [-1.28, 0.08, 1.55], scale: [0.12, 0.52, 0.52] },
+    { id: "rear_right_wheel", name: "Aro/llanta posterior derecha", position: [1.28, 0.08, 1.55], scale: [0.12, 0.52, 0.52] },
+  ];
+}
+
+function zoneColor(level) {
+  const colors = {
+    rojo: 0xef4444,
+    naranja: 0xf97316,
+    amarillo: 0xf4c430,
+    verde: 0x22c55e,
+    gris: 0x94a3b8,
+  };
+  return colors[level] || colors.gris;
+}
+
+function zoneName(zoneId, zonas = []) {
+  const found = (zonas || []).find((zone) => zone.zona_id === zoneId);
+  if (found) return found.nombre || found.zona_id;
+  const def = vehicleZoneDefinitions().find((zone) => zone.id === zoneId);
+  return def ? def.name : (zoneId || "-");
 }
 
 function renderInfo(targetId, data) {
@@ -774,8 +1275,7 @@ function updateOperationalImpact(options = {}) {
   }
 
   const role = laborCost[roleSelect.value] ? roleSelect.value : "NO_APLICA";
-  const salary = laborCost[role].salary;
-  const costHour = laborParams.hoursMonth ? salary / laborParams.hoursMonth * laborParams.factor : 0;
+  const costHour = laborCost[role].costHour * laborParams.factor;
   const costTotal = catalog.hours * costHour;
   const impact = {
     Descripcion_Trabajo: catalog.description,
@@ -784,8 +1284,8 @@ function updateOperationalImpact(options = {}) {
     Gravedad: catalog.severity,
     Tiempo_Estimado_Texto: catalog.timeText,
     Tiempo_Estimado_Horas: round(catalog.hours, 4),
-    Sueldo_Mensual_Usado: round(salary, 2),
-    Horas_Mes_Usadas: laborParams.hoursMonth,
+    Sueldo_Mensual_Usado: "",
+    Horas_Mes_Usadas: "",
     Factor_Costo_Usado: laborParams.factor,
     Costo_Hora_Usado: round(costHour, 2),
     Costo_Mano_Obra_Estimado: round(costTotal, 2),
@@ -910,6 +1410,8 @@ async function saveLocalValidation(event) {
   payload.Origen_Rechazo = item.Origen_Rechazo;
   payload.Fuente = item.Fuente;
   payload.Revision = item.Revision;
+  payload.Marca = item.Marca || "";
+  payload.Modelo = item.Modelo || "";
   payload.Descripcion_Item = item.Descripcion_Original;
   payload.Dano_Validado = finalDamage;
   payload.Dano_Manual = manualDamage;
@@ -955,6 +1457,8 @@ async function markRejectState() {
   payload.Origen_Rechazo = item.Origen_Rechazo;
   payload.Fuente = item.Fuente;
   payload.Revision = item.Revision;
+  payload.Marca = item.Marca || "";
+  payload.Modelo = item.Modelo || "";
   payload.Descripcion_Item = item.Descripcion_Original;
   payload.Dano_Validado = manualDamage || selectedDamageText();
   payload.Dano_Manual = manualDamage;
@@ -1105,7 +1609,7 @@ function round(value, decimals = 2) {
 }
 
 function money(value) {
-  return `S/ ${round(value, 2).toFixed(2)}`;
+  return `S/${round(value, 2).toFixed(2)}`;
 }
 
 function display(value) {
@@ -1124,6 +1628,8 @@ function escapeHtml(value) {
 function setBusy(isBusy) {
   document.getElementById("refreshBtn").disabled = isBusy;
   document.getElementById("applyFiltersBtn").disabled = isBusy;
+  document.getElementById("applyCostFiltersBtn").disabled = isBusy;
+  document.getElementById("applyValidated3dFiltersBtn").disabled = isBusy;
 }
 
 function toast(message) {

@@ -4,9 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Analisis de Reprocesos | SUM Vehiculos</title>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="./styles.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.9/dist/chart.umd.min.js"></script>
+  <script defer src="./vendor/chart.umd.min.js"></script>
   <script defer src="./app.js"></script>
 </head>
 <body>
@@ -25,6 +24,8 @@
         <button class="nav-item" data-view="rechazos" type="button">Rechazos pendientes</button>
         <button class="nav-item" data-view="detalle" type="button">Detalle / Validacion</button>
         <button class="nav-item" data-view="kpis" type="button">KPIs sugeridos</button>
+        <button class="nav-item" data-view="costos" type="button">Analisis de costos</button>
+        <button class="nav-item" data-view="validado3d" type="button">Mapa 3D validado</button>
       </nav>
 
       <div class="status-card">
@@ -49,6 +50,7 @@
               <option value="7">Ultimos 7 dias</option>
               <option value="14">Ultimos 14 dias</option>
               <option value="30">Ultimos 30 dias</option>
+              <option value="90">Ultimos 90 dias</option>
             </select>
           </label>
           <button class="primary-btn" id="refreshBtn" type="button">Actualizar</button>
@@ -325,6 +327,216 @@
             <div id="fuenteTable"></div>
           </article>
         </div>
+      </section>
+
+      <section class="view" id="costosView">
+        <div class="notice">
+          Costos operativos calculados solo desde la inspeccion inicial eSUM.
+        </div>
+
+        <div class="filter-bar">
+          <label>
+            Codigo
+            <select id="costCodeFilter">
+              <option value="">Todos</option>
+              <option value="P01">P01</option>
+              <option value="P02A">P02A</option>
+              <option value="P02B">P02B</option>
+              <option value="P02C">P02C</option>
+              <option value="P03">P03</option>
+              <option value="P04">P04</option>
+              <option value="P05">P05</option>
+              <option value="N/A">N/A</option>
+              <option value="OK">OK</option>
+            </select>
+          </label>
+          <label>
+            Rol
+            <select id="costRoleFilter">
+              <option value="">Todos</option>
+              <option value="PINTOR">PINTOR</option>
+              <option value="DESABOLLADOR">DESABOLLADOR</option>
+              <option value="MIXTO">MIXTO</option>
+              <option value="NO_APLICA">NO_APLICA</option>
+            </select>
+          </label>
+          <label>
+            Tipo trabajo
+            <select id="costTypeFilter">
+              <option value="">Todos</option>
+              <option value="PINTURA">PINTURA</option>
+              <option value="DESABOLLADO">DESABOLLADO</option>
+              <option value="PINTURA_DESABOLLADO">PINTURA_DESABOLLADO</option>
+              <option value="ACONDICIONADO">ACONDICIONADO</option>
+              <option value="REPUESTO">REPUESTO</option>
+              <option value="SIN_INTERVENCION">SIN_INTERVENCION</option>
+              <option value="EN_REVISION">EN_REVISION</option>
+            </select>
+          </label>
+          <label>
+            Marca
+            <input id="costBrandFilter" type="search" placeholder="Marca">
+          </label>
+          <label>
+            Modelo
+            <input id="costModelFilter" type="search" placeholder="Modelo">
+          </label>
+          <button class="secondary-btn" id="applyCostFiltersBtn" type="button">Filtrar</button>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card"><span>Registros eSUM</span><strong id="costKpiRegistros">-</strong></article>
+          <article class="kpi-card"><span>VINs</span><strong id="costKpiVins">-</strong></article>
+          <article class="kpi-card"><span>Costo estimado</span><strong id="costKpiCosto">-</strong></article>
+          <article class="kpi-card"><span>Horas estimadas</span><strong id="costKpiHoras">-</strong></article>
+          <article class="kpi-card"><span>Panos estimados</span><strong id="costKpiPanos">-</strong></article>
+          <article class="kpi-card"><span>Codigo mas costoso</span><strong id="costKpiCodigo">-</strong></article>
+        </div>
+
+        <div class="chart-grid">
+          <article class="chart-panel chart-cost-code">
+            <h3>Codigo de proceso</h3>
+            <div class="chart-box"><canvas id="costCodeChart"></canvas></div>
+          </article>
+          <article class="chart-panel chart-cost-role">
+            <h3>Horas por rol</h3>
+            <div class="chart-box"><canvas id="costRoleChart"></canvas></div>
+          </article>
+          <article class="chart-panel chart-cost-day">
+            <h3>Costo por dia</h3>
+            <div class="chart-box chart-box-small"><canvas id="costDayChart"></canvas></div>
+          </article>
+          <article class="chart-panel chart-cost-top">
+            <h3>VINs con mayor costo</h3>
+            <div id="costVinCostTable"></div>
+          </article>
+        </div>
+
+        <section class="detail-panel cost-detail-panel">
+          <h3>Detalle eSUM inicial</h3>
+          <div class="table-shell table-shell-soft">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>VIN</th>
+                  <th>Marca / Modelo</th>
+                  <th>Diagnostico</th>
+                  <th>Codigo</th>
+                  <th>Rol</th>
+                  <th>Horas</th>
+                  <th>Costo</th>
+                  <th>Operario</th>
+                </tr>
+              </thead>
+              <tbody id="costDetailBody">
+                <tr><td colspan="9">Sin datos cargados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="validado3dView">
+        <div class="notice">
+          Dashboard calculado solo con validaciones manuales guardadas.
+        </div>
+
+        <div class="filter-bar">
+          <label>
+            Causa
+            <select id="validCauseFilter">
+              <option value="">Todas</option>
+              <option value="NUEVO_DANO">Nuevo dano</option>
+              <option value="PINTURA_NO_CONFORME">Pintura no conforme</option>
+              <option value="RECEPCION_NO_DETECTO">Recepcion no detecto</option>
+              <option value="FALLA_ACONDICIONADO">Falla de acondicionado</option>
+              <option value="ERROR_IMPORTADOR">Error importador</option>
+              <option value="NO_CONCLUYENTE">No concluyente</option>
+            </select>
+          </label>
+          <label>
+            Subcausa
+            <input id="validSubcauseFilter" type="search" placeholder="Subcausa">
+          </label>
+          <label>
+            Zona
+            <input id="validZoneFilter" type="search" placeholder="Zona 3D">
+          </label>
+          <label>
+            Marca
+            <input id="validBrandFilter" type="search" placeholder="Marca">
+          </label>
+          <label>
+            Modelo
+            <input id="validModelFilter" type="search" placeholder="Modelo">
+          </label>
+          <button class="secondary-btn" id="applyValidated3dFiltersBtn" type="button">Filtrar</button>
+        </div>
+
+        <div class="kpi-grid">
+          <article class="kpi-card"><span>Validaciones</span><strong id="validKpiTotal">-</strong></article>
+          <article class="kpi-card"><span>VINs</span><strong id="validKpiVins">-</strong></article>
+          <article class="kpi-card"><span>Causa principal</span><strong id="validKpiCausa">-</strong></article>
+          <article class="kpi-card"><span>Subcausa principal</span><strong id="validKpiSubcausa">-</strong></article>
+          <article class="kpi-card"><span>Zona mas afectada</span><strong id="validKpiZona">-</strong></article>
+          <article class="kpi-card"><span>Modelo</span><strong id="validKpiModelo">-</strong></article>
+        </div>
+
+        <div class="chart-grid">
+          <article class="chart-panel chart-valid-cause">
+            <h3>Causas validadas</h3>
+            <div class="chart-box"><canvas id="validCauseChart"></canvas></div>
+          </article>
+          <article class="chart-panel chart-valid-subcause">
+            <h3>Subcausas validadas</h3>
+            <div class="chart-box"><canvas id="validSubcauseChart"></canvas></div>
+          </article>
+          <article class="chart-panel chart-valid-zone">
+            <h3>Zonas del vehiculo</h3>
+            <div id="validZoneTable"></div>
+          </article>
+        </div>
+
+        <section class="detail-panel vehicle-panel">
+          <div class="section-heading">
+            <h3>Mapa 3D validado</h3>
+            <span class="tag" id="vehicleModelTag">JETOUR X70</span>
+          </div>
+          <div class="vehicle-layout">
+            <div class="vehicle-stage" id="vehicle3dStage">
+              <canvas id="vehicle3dCanvas"></canvas>
+              <div class="vehicle-fallback hidden" id="vehicle3dFallback"></div>
+            </div>
+            <aside class="zone-detail" id="zoneDetail">
+              <strong>Zona seleccionada</strong>
+              <p>Sin zona seleccionada.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section class="detail-panel cost-detail-panel">
+          <h3>Ultimas validaciones</h3>
+          <div class="table-shell table-shell-soft">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>VIN</th>
+                  <th>Revision</th>
+                  <th>Dano</th>
+                  <th>Causa</th>
+                  <th>Subcausa</th>
+                  <th>Zona</th>
+                  <th>Analista</th>
+                </tr>
+              </thead>
+              <tbody id="validDetailBody">
+                <tr><td colspan="8">Sin datos cargados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </main>
   </div>

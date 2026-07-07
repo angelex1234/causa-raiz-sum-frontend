@@ -267,8 +267,10 @@ textarea {
 
 .kpi-card strong {
   display: block;
-  font-size: 28px;
+  font-size: 26px;
+  line-height: 1.12;
   margin-top: 10px;
+  overflow-wrap: anywhere;
 }
 
 .kpi-card.warning strong {
@@ -303,6 +305,19 @@ textarea {
 .chart-source {
   grid-column: span 8;
   min-height: 300px;
+}
+
+.chart-cost-code,
+.chart-cost-role,
+.chart-valid-cause,
+.chart-valid-subcause {
+  grid-column: span 6;
+}
+
+.chart-cost-day,
+.chart-cost-top,
+.chart-valid-zone {
+  grid-column: span 12;
 }
 
 .chart-panel h3,
@@ -709,6 +724,126 @@ th {
   gap: 14px;
 }
 
+.cost-detail-panel {
+  margin-top: 14px;
+}
+
+.table-shell-soft {
+  height: min(520px, 58vh);
+  box-shadow: none;
+}
+
+.data-table {
+  min-width: 980px;
+}
+
+.metric-table {
+  min-width: 0;
+}
+
+.vehicle-panel {
+  margin-top: 14px;
+}
+
+.vehicle-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  align-items: stretch;
+}
+
+.vehicle-stage {
+  position: relative;
+  min-height: 520px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fbff;
+}
+
+.vehicle-stage canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.vehicle-fallback {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  height: 100%;
+  overflow: auto;
+}
+
+.zone-chip {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.zone-chip span {
+  min-width: 30px;
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #eef5ff;
+  font-weight: 800;
+}
+
+.zone-rojo { border-color: #fecaca; background: #fff5f5; }
+.zone-naranja { border-color: #fed7aa; background: #fff7ed; }
+.zone-amarillo { border-color: #fde68a; background: #fffbeb; }
+.zone-verde { border-color: #bbf7d0; background: #f0fdf4; }
+.zone-gris { border-color: #dbe3ee; background: #f8fbff; }
+
+.zone-detail {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  min-height: 240px;
+}
+
+.zone-detail strong {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--navy);
+  font-size: 16px;
+}
+
+.zone-detail p {
+  color: var(--muted);
+  margin: 12px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.zone-stats {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.zone-stats span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.zone-stats b {
+  overflow-wrap: anywhere;
+}
+
 .mini-table {
   width: 100%;
   min-width: 0;
@@ -785,7 +920,7 @@ th {
   }
 
   .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .kpi-grid {
@@ -814,7 +949,8 @@ th {
   .validation-form,
   .impact-form-grid,
   .impact-summary,
-  .kpi-tables {
+  .kpi-tables,
+  .vehicle-layout {
     grid-template-columns: 1fr;
   }
 
@@ -830,8 +966,19 @@ th {
   .chart-causes,
   .chart-subcauses,
   .chart-origin,
-  .chart-source {
+  .chart-source,
+  .chart-cost-code,
+  .chart-cost-role,
+  .chart-cost-day,
+  .chart-cost-top,
+  .chart-valid-cause,
+  .chart-valid-subcause,
+  .chart-valid-zone {
     grid-column: span 1;
+  }
+
+  .vehicle-stage {
+    min-height: 420px;
   }
 
   .span-2 {
