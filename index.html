@@ -138,10 +138,9 @@
               <option value="">Todas</option>
               <option value="NUEVO_DANO">Nuevo dano</option>
               <option value="PINTURA_NO_CONFORME">Pintura no conforme</option>
-              <option value="RECEPCION_NO_DETECTO">Recepcion no detecto</option>
               <option value="FALLA_ACONDICIONADO">Falla de acondicionado</option>
-              <option value="ERROR_IMPORTADOR">Error importador</option>
-              <option value="NO_CONCLUYENTE">No concluyente</option>
+              <option value="ERROR_IMPORTADOR">Rechazo no procedente / criterio importador</option>
+              <option value="NO_CONCLUYENTE" selected>No concluyente</option>
             </select>
           </label>
           <label>
@@ -240,17 +239,17 @@
             <form id="validationForm" class="validation-form">
               <label>Causa raiz final validada
                 <select id="finalCauseSelect" name="causa_final_validada" required>
-                  <option>NUEVO_DANO</option>
-                  <option>PINTURA_NO_CONFORME</option>
-                  <option>RECEPCION_NO_DETECTO</option>
-                  <option>FALLA_ACONDICIONADO</option>
-                  <option>ERROR_IMPORTADOR</option>
-                  <option>NO_CONCLUYENTE</option>
+                  <option value="NUEVO_DANO" title="Dano que no estaba contemplado en la revision inicial y aparece despues durante el flujo operativo.">NUEVO_DANO - Nuevo dano</option>
+                  <option value="PINTURA_NO_CONFORME" title="Zona que debia trabajarse o ya fue reprocesada, pero el resultado no quedo conforme.">PINTURA_NO_CONFORME - Pintura no conforme</option>
+                  <option value="FALLA_ACONDICIONADO" title="Observacion relacionada con limpieza, interior, tapiz, techo, residuos o acondicionado.">FALLA_ACONDICIONADO - Falla de acondicionado</option>
+                  <option value="ERROR_IMPORTADOR" title="Rechazo no procedente o con criterio no alineado, especialmente cuando eSUM indicaba PASA o no existe evidencia clara.">ERROR_IMPORTADOR - Rechazo no procedente</option>
+                  <option value="NO_CONCLUYENTE" title="No hay evidencia suficiente para determinar una causa raiz confiable.">NO_CONCLUYENTE - No concluyente</option>
                 </select>
               </label>
               <label>Subcausa final validada
                 <select id="finalSubcauseSelect" name="subcausa_final_validada" required></select>
               </label>
+              <p class="local-note span-2" id="causeDefinitionHelp">Selecciona una causa para ver sus subcausas permitidas.</p>
               <label>Analista
                 <input name="analista" type="text" placeholder="Nombre del supervisor">
               </label>
@@ -302,6 +301,50 @@
                 <div class="impact-summary" id="impactSummary"></div>
               </div>
 
+
+
+              <div class="operational-impact span-2" id="reprocessCostPanel">
+                <div class="section-heading">
+                  <h4>Costo de reproceso no recuperado</h4>
+                  <span class="tag" id="reprocessCostTag">Nuevo modulo</span>
+                </div>
+                <p class="local-note">
+                  Usar solo cuando el supervisor confirme que hubo un reproceso adicional. Si no aplica, deja Calcular en NO.
+                </p>
+                <div class="impact-form-grid">
+                  <label>Calcular costo de reproceso
+                    <select id="calculateReprocessCostSelect" name="Calcular_Costo_Reproceso">
+                      <option value="NO" selected>NO</option>
+                      <option value="SI">SI</option>
+                    </select>
+                  </label>
+                  <label>Codigo reproceso validado
+                    <select id="reprocessCodeSelect" name="Codigo_Reproceso_Validado">
+                      <option value="">No aplica</option>
+                      <option value="P01">P01 - Pulido Regular</option>
+                      <option value="P02A">P02A - Pulido + Pano Puntual</option>
+                      <option value="P02B">P02B - Pulido + Pano Simple</option>
+                      <option value="P02C">P02C - Pulido + Pano Doble</option>
+                      <option value="P03">P03 - PDR + Pulido</option>
+                      <option value="P04">P04 - Combinado</option>
+                      <option value="P05">P05 - Reparacion mayor</option>
+                    </select>
+                  </label>
+                  <label>Rol reproceso
+                    <select id="reprocessRoleSelect" name="Rol_Reproceso">
+                      <option value="PINTOR">PINTOR</option>
+                      <option value="DESABOLLADOR">DESABOLLADOR</option>
+                      <option value="MIXTO">MIXTO</option>
+                      <option value="NO_APLICA">NO_APLICA</option>
+                    </select>
+                  </label>
+                </div>
+                <label class="span-2">Comentario costo reproceso
+                  <textarea id="reprocessCostComment" name="Comentario_Costo_Reproceso" rows="2" placeholder="Ejemplo: Se reproceso nuevamente por rayon no subsanado."></textarea>
+                </label>
+                <div class="impact-summary" id="reprocessCostSummary">Sin costo de reproceso seleccionado.</div>
+              </div>
+
               <p class="local-note span-2 hidden" id="operationalImpactNote">
                 El impacto operativo se calcula por ahora solo para Control Calidad, porque ahi el dano viene separado por item.
               </p>
@@ -331,7 +374,7 @@
 
       <section class="view" id="costosView">
         <div class="notice">
-          Costos operativos calculados solo desde la inspeccion inicial eSUM.
+          Costos operativos: flujo inicial eSUM + reprocesos validados manualmente. El sobrecosto solo aparece cuando se valida un costo de reproceso.
         </div>
 
         <div class="filter-bar">
@@ -393,6 +436,31 @@
           <article class="kpi-card"><span>Codigo mas costoso</span><strong id="costKpiCodigo">-</strong></article>
         </div>
 
+        <section class="detail-panel cost-comparison-panel">
+          <div class="section-heading">
+            <h3>Comparativa eSUM vs reprocesos</h3>
+            <span class="tag" id="costComparisonTag">Pendiente cargar</span>
+          </div>
+          <div class="kpi-grid">
+            <article class="kpi-card"><span>Costo inicial eSUM</span><strong id="comparisonKpiInitialCost">-</strong></article>
+            <article class="kpi-card warning"><span>Costo reprocesos</span><strong id="comparisonKpiReprocessCost">-</strong></article>
+            <article class="kpi-card"><span>Costo operativo real</span><strong id="comparisonKpiRealCost">-</strong></article>
+            <article class="kpi-card"><span>% sobrecosto</span><strong id="comparisonKpiOvercostPct">-</strong></article>
+            <article class="kpi-card"><span>Horas reproceso</span><strong id="comparisonKpiReprocessHours">-</strong></article>
+            <article class="kpi-card"><span>VINs con reproceso</span><strong id="comparisonKpiReprocessVins">-</strong></article>
+          </div>
+          <div class="chart-grid">
+            <article class="chart-panel">
+              <h3>Conclusiones</h3>
+              <div id="comparisonConclusions" class="stack">Sin datos cargados.</div>
+            </article>
+            <article class="chart-panel">
+              <h3>Top VINs por sobrecosto</h3>
+              <div id="comparisonTopOvercostTable">Sin datos cargados.</div>
+            </article>
+          </div>
+        </section>
+
         <div class="chart-grid">
           <article class="chart-panel chart-cost-code">
             <h3>Codigo de proceso</h3>
@@ -449,9 +517,8 @@
               <option value="">Todas</option>
               <option value="NUEVO_DANO">Nuevo dano</option>
               <option value="PINTURA_NO_CONFORME">Pintura no conforme</option>
-              <option value="RECEPCION_NO_DETECTO">Recepcion no detecto</option>
               <option value="FALLA_ACONDICIONADO">Falla de acondicionado</option>
-              <option value="ERROR_IMPORTADOR">Error importador</option>
+              <option value="ERROR_IMPORTADOR">Rechazo no procedente / criterio importador</option>
               <option value="NO_CONCLUYENTE">No concluyente</option>
             </select>
           </label>
