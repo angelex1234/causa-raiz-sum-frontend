@@ -989,3 +989,56 @@ th {
     height: 64vh;
   }
 }
+
+/* ============================================================
+   Modulo nuevo: comparativa de costos y reproceso manual
+   ============================================================ */
+
+.cost-comparison-panel {
+  margin-bottom: 14px;
+}
+
+.cost-comparison-panel .kpi-grid {
+  margin-bottom: 12px;
+}
+
+.cost-comparison-panel .chart-grid {
+  margin-top: 12px;
+}
+
+.cost-comparison-panel #comparisonConclusions {
+  max-height: none;
+}
+
+#comparisonTopOvercostTable p,
+#comparisonConclusions p {
+  margin: 0;
+  color: var(--muted);
+}
+
+#reprocessCostPanel {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+#reprocessCostPanel .section-heading h4 {
+  color: #7c2d12;
+}
+
+#reprocessCostPanel .impact-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+#causeDefinitionHelp {
+  background: #f8fbff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+@media (max-width: 780px) {
+  #reprocessCostPanel .impact-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
