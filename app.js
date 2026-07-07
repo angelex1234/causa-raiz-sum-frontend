@@ -8,6 +8,7 @@ const state = {
   detail: null,
   detailCache: {},
   costos: null,
+  costComparison: null,
   validado3d: null,
   vehicleScene: null,
   charts: {},
@@ -16,10 +17,26 @@ const state = {
 const labels = {
   NUEVO_DANO: "Nuevo dano",
   PINTURA_NO_CONFORME: "Pintura no conforme",
-  RECEPCION_NO_DETECTO: "Recepcion no detecto",
   FALLA_ACONDICIONADO: "Falla de acondicionado",
-  ERROR_IMPORTADOR: "Error importador",
+  ERROR_IMPORTADOR: "Rechazo no procedente / criterio importador",
   NO_CONCLUYENTE: "No concluyente",
+
+  RAYON_RECIENTE: "Rayon reciente",
+  ABOLLADURA_RECIENTE: "Abolladura reciente",
+  DANO_NO_IDENTIFICADO: "Dano no identificado",
+  DANO_NO_SUBSANADO: "Dano no subsanado",
+  FALLA_ACABADO: "Falla de acabado",
+  TRABAJO_INCOMPLETO: "Trabajo incompleto",
+  LIMPIEZA_INCOMPLETA: "Limpieza incompleta",
+  INTERIOR_SUCIO: "Interior sucio",
+  TAPIZ_TECHO_OBSERVADO: "Tapiz / techo observado",
+  CRITERIO_NO_ALINEADO: "Criterio no alineado",
+  RECHAZO_SIN_EVIDENCIA: "Rechazo sin evidencia",
+  OBSERVACION_AMBIGUA: "Observacion ambigua",
+  SIN_EVIDENCIA: "Sin evidencia",
+  FOTO_NO_CLARA: "Foto no clara",
+  SIN_COINCIDENCIA: "Sin coincidencia",
+
   CONTROL_CALIDAD: "Control Calidad",
   IMPORTADOR_VARI_REVO: "VARI / REVO",
   ALTA: "Alta",
@@ -27,16 +44,46 @@ const labels = {
   BAJA: "Baja",
 };
 
+const definitions = {
+  causas: {
+    NUEVO_DANO: "Dano que no estaba contemplado en la revision inicial y aparece despues durante el flujo operativo.",
+    PINTURA_NO_CONFORME: "Zona que debia trabajarse o ya fue reprocesada, pero el resultado no quedo conforme.",
+    FALLA_ACONDICIONADO: "Observacion relacionada con limpieza, interior, tapiz, techo, residuos o acondicionado.",
+    ERROR_IMPORTADOR: "Rechazo no procedente o con criterio no alineado, especialmente cuando eSUM indicaba PASA o no existe evidencia clara.",
+    NO_CONCLUYENTE: "No hay evidencia suficiente para determinar una causa raiz confiable.",
+  },
+  subcausas: {
+    RAYON_RECIENTE: "Rayon detectado despues de la revision inicial.",
+    ABOLLADURA_RECIENTE: "Abolladura o golpe detectado despues de la revision inicial.",
+    DANO_NO_IDENTIFICADO: "Dano fisico que no puede clasificarse con mayor precision.",
+    DANO_NO_SUBSANADO: "Dano que debia corregirse pero sigue presente.",
+    FALLA_ACABADO: "Defecto de acabado como grumo, pulverizado, mal pulido, tono o pintura no conforme.",
+    TRABAJO_INCOMPLETO: "Intervencion realizada parcialmente o no finalizada correctamente.",
+    LIMPIEZA_INCOMPLETA: "Limpieza o acondicionado terminado de forma incompleta.",
+    INTERIOR_SUCIO: "Suciedad o residuos en zonas interiores.",
+    TAPIZ_TECHO_OBSERVADO: "Observacion en tapiz, techo o cielo raso.",
+    CRITERIO_NO_ALINEADO: "El criterio del dealer/importador no coincide con el criterio interno o evidencia disponible.",
+    RECHAZO_SIN_EVIDENCIA: "El rechazo no tiene evidencia visual suficiente.",
+    OBSERVACION_AMBIGUA: "La observacion es vaga o poco precisa.",
+    SIN_EVIDENCIA: "No hay fotos o registros suficientes.",
+    FOTO_NO_CLARA: "La foto existe, pero no permite confirmar el dano.",
+    SIN_COINCIDENCIA: "No se encontro relacion clara con eSUM, Control Calidad o historial.",
+  },
+};
+
+const AUTHUSER_CACHE_KEY = "cr_working_authuser";
+const AUTHUSER_MAX_TRIES = 5;
+
+
 const palette = ["#1f7ae0", "#22c55e", "#f4c430", "#ef4444", "#38bdf8", "#0b1f3a", "#8b5cf6", "#f97316"];
 let chartJsPromise = null;
 
 const finalSubcauses = {
-  NUEVO_DANO: ["RAYON_RECIENTE", "ABOLLADURA_RECIENTE", "ARANONES", "PORTAZO_MOVILIZACION", "DANO_ZAPATO", "DANO_NO_IDENTIFICADO"],
-  PINTURA_NO_CONFORME: ["FALLA_PINTURA", "GRUMO", "PULVERIZADO", "MAL_PULIDO", "TRABAJO_INCOMPLETO", "DANO_NO_SUBSANADO"],
-  RECEPCION_NO_DETECTO: ["DANO_PREEXISTENTE_NO_MARCADO", "SECCION_PASA_CON_EVIDENCIA", "FOTO_INICIAL_INSUFICIENTE", "CHECKLIST_INCOMPLETO"],
-  FALLA_ACONDICIONADO: ["TECHO_SUCIO", "TAPIZ_MANCHADO", "SUCIEDAD_INTERIOR", "RESIDUOS", "LIMPIEZA_INCOMPLETA"],
-  ERROR_IMPORTADOR: ["MALA_VALIDACION_IMPORTADOR", "DEFECTO_ORIGEN_NO_REPORTADO", "UNIDAD_VALIDADA_CON_DEFECTO"],
-  NO_CONCLUYENTE: ["SIN_COINCIDENCIA", "SIN_EVIDENCIA", "FOTO_NO_CLARA", "TEXTO_NO_NORMALIZABLE"],
+  NUEVO_DANO: ["RAYON_RECIENTE", "ABOLLADURA_RECIENTE", "DANO_NO_IDENTIFICADO"],
+  PINTURA_NO_CONFORME: ["DANO_NO_SUBSANADO", "FALLA_ACABADO", "TRABAJO_INCOMPLETO"],
+  FALLA_ACONDICIONADO: ["LIMPIEZA_INCOMPLETA", "INTERIOR_SUCIO", "TAPIZ_TECHO_OBSERVADO"],
+  ERROR_IMPORTADOR: ["CRITERIO_NO_ALINEADO", "RECHAZO_SIN_EVIDENCIA", "OBSERVACION_AMBIGUA"],
+  NO_CONCLUYENTE: ["SIN_EVIDENCIA", "FOTO_NO_CLARA", "SIN_COINCIDENCIA"],
 };
 
 const workCatalog = {
@@ -72,10 +119,34 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDashboard();
 });
 
-function jsonpRequest(action, params = {}) {
+async function jsonpRequest(action, params = {}) {
+  const attempts = authuserAttempts();
+  let lastError = null;
+
+  for (const authuser of attempts) {
+    try {
+      const payload = await jsonpRequestOnce(action, params, authuser);
+      rememberWorkingAuthuser(authuser);
+      return payload;
+    } catch (error) {
+      lastError = error;
+      if (authuser !== null) {
+        localStorage.removeItem(AUTHUSER_CACHE_KEY);
+      }
+    }
+  }
+
+  throw lastError || new Error(`No se pudo consultar ${action}`);
+}
+
+function jsonpRequestOnce(action, params = {}, authuser = null) {
   return new Promise((resolve, reject) => {
     const callback = `cr_jsonp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const query = new URLSearchParams({ action, callback });
+
+    if (authuser !== null && authuser !== undefined && authuser !== "") {
+      query.set("authuser", authuser);
+    }
 
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && String(value) !== "") {
@@ -108,6 +179,24 @@ function jsonpRequest(action, params = {}) {
     script.src = `${API_URL}?${query.toString()}`;
     document.head.appendChild(script);
   });
+}
+
+function authuserAttempts() {
+  const cached = localStorage.getItem(AUTHUSER_CACHE_KEY);
+  const attempts = [];
+
+  if (cached !== null && cached !== "") attempts.push(cached);
+
+  // Primero URL normal; si falla, prueba authuser=0..5.
+  attempts.push(null);
+  for (let i = 0; i <= AUTHUSER_MAX_TRIES; i += 1) attempts.push(String(i));
+
+  return attempts.filter((value, index) => attempts.indexOf(value) === index);
+}
+
+function rememberWorkingAuthuser(authuser) {
+  if (authuser === null || authuser === undefined || authuser === "") return;
+  localStorage.setItem(AUTHUSER_CACHE_KEY, String(authuser));
 }
 
 function bindNavigation() {
@@ -150,6 +239,20 @@ function bindControls() {
   document.getElementById("workCodeSelect").addEventListener("change", () => updateOperationalImpact({ manualCode: true }));
   document.getElementById("laborRoleSelect").addEventListener("change", () => updateOperationalImpact({ manualRole: true }));
   document.getElementById("impactTypeSelect").addEventListener("change", () => updateOperationalImpact({ manualType: true }));
+
+  const calculateReprocessCostSelect = document.getElementById("calculateReprocessCostSelect");
+  const reprocessCodeSelect = document.getElementById("reprocessCodeSelect");
+  const reprocessRoleSelect = document.getElementById("reprocessRoleSelect");
+  if (calculateReprocessCostSelect) {
+    calculateReprocessCostSelect.addEventListener("change", () => updateReprocessCost());
+  }
+  if (reprocessCodeSelect) {
+    reprocessCodeSelect.addEventListener("change", () => updateReprocessCost({ manualRole: false }));
+  }
+  if (reprocessRoleSelect) {
+    reprocessRoleSelect.addEventListener("change", () => updateReprocessCost({ manualRole: true }));
+  }
+
   document.getElementById("manualDamageInput").addEventListener("input", updateManualDamageState);
   document.getElementById("photoModalClose").addEventListener("click", closePhotoModal);
   document.getElementById("photoModal").addEventListener("click", (event) => {
@@ -179,7 +282,7 @@ function showView(viewName) {
     rechazos: ["Rechazos pendientes", "Lista completa con scroll propio y filtros."],
     detalle: ["Detalle / Validacion", "Analisis manual con evidencia e historial por VIN."],
     kpis: ["KPIs sugeridos", "Distribuciones calculadas por el sistema."],
-    costos: ["Analisis de costos", "Costos operativos estimados desde eSUM inicial."],
+    costos: ["Analisis de costos", "Comparativa entre flujo inicial eSUM y reprocesos validados manualmente."],
     validado3d: ["Mapa 3D validado", "Causas validadas manualmente ubicadas por zona."],
   };
   document.getElementById("pageTitle").textContent = titles[viewName][0];
@@ -200,6 +303,7 @@ async function loadStatus() {
   try {
     const payload = await jsonpRequest("status");
     if (!payload.ok) throw new Error(payload.error || "Estado no disponible");
+    hydrateStatusMetadata(payload);
     document.querySelector(".status-dot").style.background = "#22c55e";
     document.getElementById("statusText").textContent = payload.estado_demo || payload.modo || "Solo lectura";
     document.getElementById("statusSubtext").textContent = payload.sistema || "Apps Script JSONP";
@@ -242,17 +346,29 @@ function renderDashboard(data) {
 async function loadCostDashboard() {
   try {
     setBusy(true);
-    const payload = await jsonpRequest("dashboard_costos", {
+    const commonFilters = {
       dias: document.getElementById("daysSelect").value,
-      codigo: document.getElementById("costCodeFilter").value,
-      rol: document.getElementById("costRoleFilter").value,
-      tipoTrabajo: document.getElementById("costTypeFilter").value,
       marca: document.getElementById("costBrandFilter").value.trim(),
       modelo: document.getElementById("costModelFilter").value.trim(),
-    });
-    if (!payload.ok) throw new Error(payload.error || "No se pudo cargar analisis de costos");
-    state.costos = payload;
-    renderCostDashboard(payload);
+    };
+
+    const [costPayload, comparisonPayload] = await Promise.all([
+      jsonpRequest("dashboard_costos", {
+        ...commonFilters,
+        codigo: document.getElementById("costCodeFilter").value,
+        rol: document.getElementById("costRoleFilter").value,
+        tipoTrabajo: document.getElementById("costTypeFilter").value,
+      }),
+      jsonpRequest("comparativa_costos", commonFilters),
+    ]);
+
+    if (!costPayload.ok) throw new Error(costPayload.error || "No se pudo cargar analisis de costos");
+    if (!comparisonPayload.ok) throw new Error(comparisonPayload.error || "No se pudo cargar comparativa de costos");
+
+    state.costos = costPayload;
+    state.costComparison = comparisonPayload;
+    renderCostDashboard(costPayload);
+    renderCostComparison(comparisonPayload);
   } catch (error) {
     toast(error.message);
   } finally {
@@ -279,6 +395,46 @@ function renderCostDashboard(data) {
   ]);
   renderCostDetail(data.detalle_tabla || []);
 }
+
+function renderCostComparison(data) {
+  if (!data) return;
+
+  setText("comparisonKpiInitialCost", money(data.costo_inicial_esum));
+  setText("comparisonKpiReprocessCost", money(data.costo_reprocesos));
+  setText("comparisonKpiRealCost", money(data.costo_operativo_real));
+  setText("comparisonKpiOvercostPct", `${round(data.porcentaje_sobrecosto, 2)}%`);
+  setText("comparisonKpiReprocessHours", round(data.horas_reprocesos, 2));
+  setText("comparisonKpiReprocessVins", data.total_vins_con_reproceso_validado || 0);
+
+  const tag = document.getElementById("costComparisonTag");
+  if (tag) {
+    tag.textContent = Number(data.costo_reprocesos || 0) > 0
+      ? `Sobrecosto: ${money(data.costo_reprocesos)}`
+      : "Sin reprocesos validados";
+  }
+
+  const conclusions = document.getElementById("comparisonConclusions");
+  if (conclusions) {
+    const rows = data.conclusiones || [];
+    conclusions.innerHTML = rows.length
+      ? rows.map((text) => `<div class="history-card">${escapeHtml(text)}</div>`).join("")
+      : `<div class="history-card">Aun no hay conclusiones de costos.</div>`;
+  }
+
+  renderMetricTable("comparisonTopOvercostTable", data.top_vins_sobrecosto || [], [
+    ["VIN", "VIN"],
+    ["Modelo", "Modelo", (value) => value || "-"],
+    ["Sobrecosto", "sobrecosto", money],
+    ["Horas", "horas_reproceso", (value) => round(value, 2)],
+    ["Reprocesos", "cantidad_reprocesos_validados"],
+  ]);
+
+  const topTarget = document.getElementById("comparisonTopOvercostTable");
+  if (topTarget && !(data.top_vins_sobrecosto || []).length) {
+    topTarget.innerHTML = `<p>Sin reprocesos validados manualmente.</p>`;
+  }
+}
+
 
 async function loadValidated3dDashboard() {
   try {
@@ -481,7 +637,8 @@ function renderDetalle(data) {
   renderInitialEsum(data.inspeccion_inicial_esum || []);
   configureValidationForm(data, flow);
   hydrateLocalValidation(item.ID_Item);
-  configureValidationForm(data, flow);
+  updateFinalSubcauses();
+  updateReprocessCost({ manualRole: true });
   updateManualDamageState();
   renderRejectStateButton(item);
 }
@@ -1235,6 +1392,7 @@ function configureValidationForm(data, flow) {
 
   if (!isControlQuality) {
     clearOperationalImpact();
+    updateReprocessCost({ forceNo: !hasLocalValidation });
     return;
   }
 
@@ -1244,6 +1402,7 @@ function configureValidationForm(data, flow) {
   if (!hasLocalValidation) codeSelect.value = suggestedCode || "N/A";
   if (!workCatalog[codeSelect.value]) codeSelect.value = suggestedCode || "N/A";
   updateOperationalImpact({ manualRole: hasLocalValidation, manualType: hasLocalValidation });
+  updateReprocessCost({ forceNo: !hasLocalValidation });
 }
 
 function updateFinalSubcauses() {
@@ -1251,13 +1410,26 @@ function updateFinalSubcauses() {
   const subcauseSelect = document.getElementById("finalSubcauseSelect");
   const current = subcauseSelect.value;
   const subcauses = finalSubcauses[causeSelect.value] || finalSubcauses.NUEVO_DANO;
-  subcauseSelect.innerHTML = subcauses.map((subcause) => `
-    <option value="${escapeHtml(subcause)}">${escapeHtml(subcause)}</option>
-  `).join("");
+
+  subcauseSelect.innerHTML = subcauses.map((subcause) => {
+    const label = display(subcause);
+    const definition = definitions.subcausas[subcause] || "";
+    return `<option value="${escapeHtml(subcause)}" title="${escapeHtml(definition)}">${escapeHtml(subcause)} - ${escapeHtml(label)}</option>`;
+  }).join("");
+
   if (subcauses.includes(current)) {
     subcauseSelect.value = current;
   }
+
+  const help = document.getElementById("causeDefinitionHelp");
+  if (help) {
+    const cause = causeSelect.value;
+    const causeDefinition = definitions.causas[cause] || "Selecciona una causa para ver sus subcausas permitidas.";
+    const subcauseLabels = subcauses.map((code) => display(code)).join(" · ");
+    help.textContent = `${causeDefinition} Subcausas: ${subcauseLabels}.`;
+  }
 }
+
 
 function updateOperationalImpact(options = {}) {
   const item = state.detail && state.detail.item_seleccionado;
@@ -1332,6 +1504,79 @@ function clearOperationalImpact() {
   document.getElementById("impactSummary").innerHTML = "";
 }
 
+function updateReprocessCost(options = {}) {
+  const calcSelect = document.getElementById("calculateReprocessCostSelect");
+  const codeSelect = document.getElementById("reprocessCodeSelect");
+  const roleSelect = document.getElementById("reprocessRoleSelect");
+  const summary = document.getElementById("reprocessCostSummary");
+  const tag = document.getElementById("reprocessCostTag");
+
+  if (!calcSelect || !codeSelect || !roleSelect || !summary) return;
+
+  if (options.forceNo) {
+    calcSelect.value = "NO";
+    codeSelect.value = "";
+    roleSelect.value = "NO_APLICA";
+  }
+
+  const calculate = calcSelect.value === "SI";
+
+  codeSelect.disabled = !calculate;
+  roleSelect.disabled = !calculate;
+  const comment = document.getElementById("reprocessCostComment");
+  if (comment) comment.disabled = !calculate;
+
+  if (!calculate) {
+    summary.innerHTML = "Sin costo de reproceso seleccionado.";
+    if (tag) tag.textContent = "No aplica";
+    return;
+  }
+
+  const code = codeSelect.value;
+  if (!code || !workCatalog[code]) {
+    summary.innerHTML = `<div class="history-card">Selecciona un codigo P01, P02A, P02B, P02C, P03, P04 o P05 para calcular el costo.</div>`;
+    if (tag) tag.textContent = "Pendiente codigo";
+    return;
+  }
+
+  if (!options.manualRole) {
+    roleSelect.value = suggestedRoleForCode(code);
+  }
+
+  const role = laborCost[roleSelect.value] ? roleSelect.value : "NO_APLICA";
+  const catalog = workCatalog[code] || workCatalog["N/A"];
+  const costHour = laborCost[role].costHour * laborParams.factor;
+  const costTotal = catalog.hours * costHour;
+
+  if (tag) tag.textContent = `Costo reproceso: ${money(costTotal)}`;
+
+  summary.innerHTML = `
+    <div class="impact-card"><span>Codigo</span><strong>${escapeHtml(code)}</strong></div>
+    <div class="impact-card"><span>Trabajo</span><strong>${escapeHtml(catalog.description)}</strong></div>
+    <div class="impact-card"><span>Panos</span><strong>${escapeHtml(catalog.panos)}</strong></div>
+    <div class="impact-card"><span>Tiempo</span><strong>${escapeHtml(catalog.timeText)}</strong></div>
+    <div class="impact-card"><span>Horas</span><strong>${escapeHtml(round(catalog.hours, 4))}</strong></div>
+    <div class="impact-card"><span>Rol</span><strong>${escapeHtml(role)}</strong></div>
+    <div class="impact-card"><span>Costo hora</span><strong>${money(costHour)}</strong></div>
+    <div class="impact-card"><span>Costo reproceso</span><strong>${money(costTotal)}</strong></div>
+  `;
+}
+
+function validateReprocessCostForm() {
+  const calcSelect = document.getElementById("calculateReprocessCostSelect");
+  const codeSelect = document.getElementById("reprocessCodeSelect");
+  if (!calcSelect || !codeSelect) return true;
+
+  if (calcSelect.value === "SI" && !codeSelect.value) {
+    toast("Selecciona el codigo del reproceso o cambia Calcular costo de reproceso a NO.");
+    codeSelect.focus();
+    return false;
+  }
+
+  return true;
+}
+
+
 function suggestWorkCode(item) {
   if (!item) return "N/A";
   const text = plainText([
@@ -1392,6 +1637,8 @@ async function saveLocalValidation(event) {
 
   const flow = detailFlow(state.detail || {});
   if (flow.isControlQuality) updateOperationalImpact();
+  updateReprocessCost({ manualRole: true });
+  if (!validateReprocessCostForm()) return;
   if (!event.currentTarget.checkValidity()) {
     event.currentTarget.reportValidity();
     return;
@@ -1445,6 +1692,8 @@ async function markRejectState() {
   const button = document.getElementById("markRejectDoneBtn");
   const status = document.getElementById("validationSaveStatus");
   const form = document.getElementById("validationForm");
+  updateReprocessCost({ manualRole: true });
+  if (!validateReprocessCostForm()) return;
   const formData = new FormData(form);
   const payload = Object.fromEntries(formData.entries());
   const nextState = item.Analizado_Rechazo ? "PENDIENTE" : "HECHO";
@@ -1508,6 +1757,7 @@ function hydrateLocalValidation(idItem) {
       if (form.elements[key]) form.elements[key].value = value;
     });
     manual.value = saved.Dano_Manual || saved.dano_manual || "";
+    updateReprocessCost({ manualRole: true });
   } catch (error) {
     console.warn(error);
   }
@@ -1588,6 +1838,46 @@ function absoluteApiUrl(value) {
   if (!raw.startsWith("?")) return "";
   return `${API_URL}${raw}`;
 }
+
+function hydrateStatusMetadata(payload) {
+  const causasRaiz = payload && payload.causas_raiz ? payload.causas_raiz : null;
+  if (!causasRaiz) return;
+
+  if (causasRaiz.causas) Object.assign(labels, causasRaiz.causas);
+  if (causasRaiz.subcausas) Object.assign(labels, causasRaiz.subcausas);
+  if (causasRaiz.definiciones_causas) Object.assign(definitions.causas, causasRaiz.definiciones_causas);
+  if (causasRaiz.definiciones_subcausas) Object.assign(definitions.subcausas, causasRaiz.definiciones_subcausas);
+
+  if (causasRaiz.subcausas_por_causa) {
+    Object.keys(finalSubcauses).forEach((key) => delete finalSubcauses[key]);
+    Object.assign(finalSubcauses, causasRaiz.subcausas_por_causa);
+  }
+
+  if (payload.costos && payload.costos.catalogo_trabajo) {
+    Object.entries(payload.costos.catalogo_trabajo).forEach(([code, item]) => {
+      if (!item) return;
+      workCatalog[code] = {
+        description: item.Descripcion || item.description || "",
+        diagnosis: item.Diagnostico || item.diagnosis || "",
+        type: item.TipoTrabajo || item.type || "",
+        panos: Number(item.Panos || item.panos || 0),
+        severity: Number(item.Gravedad || item.severity || 0),
+        timeText: item.TiempoTexto || item.timeText || "0",
+        hours: Number(item.TiempoHoras || item.hours || 0),
+      };
+    });
+  }
+
+  if (payload.costos && payload.costos.costos_roles) {
+    Object.entries(payload.costos.costos_roles).forEach(([role, item]) => {
+      if (!item) return;
+      laborCost[role] = {
+        costHour: Number(item.CostoHora || item.costHour || 0),
+      };
+    });
+  }
+}
+
 
 function setText(id, value) {
   document.getElementById(id).textContent = value ?? "-";
